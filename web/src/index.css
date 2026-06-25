@@ -1,0 +1,136 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/*
+ * Design tokens (design doc §9.2).
+ *
+ * Two independent axes:
+ *   - Theme (light/dark) is controlled by `<html data-theme>`.
+ *   - Brand key color is the `--brand` variable on :root, user-selectable.
+ *
+ * Derived brand shades use the CSS relative-color syntax `oklch(from …)`, so
+ * any chosen key color produces sensible strong/weak shades automatically.
+ * `--on-brand` (text color on top of the brand color) is recomputed in JS for
+ * accuracy and broad support — see src/lib/theme.ts.
+ */
+:root {
+  /* Brand key color — default Konatsu yellow. */
+  --brand: #ffd20a;
+  --brand-strong: oklch(from var(--brand) calc(l - 0.08) c h); /* hover / pressed */
+  --brand-weak: oklch(from var(--brand) 0.96 calc(c * 0.35) h); /* selected row / badge bg */
+  --on-brand: #1f2329; /* text on brand color; JS overrides per chosen color */
+
+  /* Surfaces (light theme) */
+  --bg: #ffffff;
+  --surface: #ffffff;
+  --surface-sub: #f6f8f8;
+  --text: #1f2329;
+  --text-sub: #5f6368;
+  --line: #ebedf0;
+  --hover: #f7f9f8;
+
+  /* High-priority accent (theme independent) */
+  --prio-high: oklch(0.52 0.16 27);
+
+  color-scheme: light;
+}
+
+:root[data-theme='dark'] {
+  --brand-weak: oklch(from var(--brand) 0.32 calc(c * 0.5) h);
+
+  --bg: #16181c;
+  --surface: #1f2329;
+  --surface-sub: #262a30;
+  --text: #e4e6eb;
+  --text-sub: #9aa0a6;
+  --line: #303540;
+  --hover: #262a30;
+
+  color-scheme: dark;
+}
+
+@layer base {
+  html,
+  body,
+  #root {
+    height: 100%;
+  }
+
+  body {
+    margin: 0;
+    background: var(--bg);
+    color: var(--text);
+    font-family: 'IBM Plex Sans JP', system-ui, sans-serif;
+    -webkit-font-smoothing: antialiased;
+    text-rendering: optimizeLegibility;
+  }
+
+  input::placeholder,
+  textarea::placeholder {
+    color: var(--text-sub);
+    opacity: 0.85;
+  }
+
+  /* Custom scrollbar to match the design mock. */
+  ::-webkit-scrollbar {
+    width: 12px;
+    height: 12px;
+  }
+  ::-webkit-scrollbar-thumb {
+    background: var(--line);
+    border-radius: 8px;
+    border: 3px solid var(--surface);
+  }
+  ::-webkit-scrollbar-thumb:hover {
+    background: var(--text-sub);
+  }
+}
+
+@layer components {
+  /* Material Symbols Outlined icon font helper. */
+  .material-symbols-outlined {
+    font-family: 'Material Symbols Outlined';
+    font-weight: normal;
+    font-style: normal;
+    line-height: 1;
+    letter-spacing: normal;
+    text-transform: none;
+    display: inline-block;
+    white-space: nowrap;
+    word-wrap: normal;
+    direction: ltr;
+    -webkit-font-feature-settings: 'liga';
+    font-feature-settings: 'liga';
+    -webkit-font-smoothing: antialiased;
+    user-select: none;
+  }
+
+  /* Filled variant for active/selected icons. */
+  .material-symbols-outlined.filled {
+    font-variation-settings: 'FILL' 1;
+  }
+
+  /* Circular icon button used across the top bar / toolbars. */
+  .icon-btn {
+    @apply inline-flex h-10 w-10 flex-none items-center justify-center rounded-full
+      text-content-sub transition-colors hover:bg-hover
+      focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand;
+  }
+  .icon-btn-sm {
+    @apply inline-flex h-9 w-9 flex-none items-center justify-center rounded-full
+      text-content-sub transition-colors hover:bg-hover
+      focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand;
+  }
+}
+
+/* Respect users who prefer reduced motion. */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
+}

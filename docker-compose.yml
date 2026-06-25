@@ -1,0 +1,55 @@
+services:
+  db:
+    image: postgres:17-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: konatsu
+      POSTGRES_PASSWORD: konatsu
+      POSTGRES_DB: konatsu
+    volumes:
+      - ./db_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U konatsu -d konatsu"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  backend:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    restart: unless-stopped
+    depends_on:
+      db:
+        condition: service_healthy
+    environment:
+      DATABASE_URL: postgres://konatsu:konatsu@db:5432/konatsu?sslmode=disable
+      MASTER_ENC_KEY: ${MASTER_ENC_KEY:-bXlzdXBlcnNlY3JldGtleWZvcjMyYnl0ZXMh}
+      JWT_SECRET: ${JWT_SECRET:-local-dev-jwt-secret-change-me-in-production}
+      ALLOW_REGISTRATION: ${ALLOW_REGISTRATION:-true}
+      VAPID_PUBLIC_KEY: ${VAPID_PUBLIC_KEY:-}
+      VAPID_PRIVATE_KEY: ${VAPID_PRIVATE_KEY:-}
+      VAPID_SUBJECT: ${VAPID_SUBJECT:-mailto:admin@example.com}
+      LLM_WORKERS: ${LLM_WORKERS:-4}
+      NOTIFY_THRESHOLD: ${NOTIFY_THRESHOLD:-4}
+      LLM_DEFAULT_BASE_URL: ${LLM_DEFAULT_BASE_URL:-https://api.openai.com/v1}
+      LLM_DEFAULT_MODEL: ${LLM_DEFAULT_MODEL:-gpt-4o-mini}
+      LLM_DEFAULT_API_KEY: ${LLM_DEFAULT_API_KEY:-}
+    ports:
+      - "8080:8080"
+
+  frontend:
+    build:
+      context: ./web
+      dockerfile: Dockerfile
+      args:
+        # Same-origin: nginx in the frontend container proxies /api to backend.
+        VITE_API_BASE_URL: /api
+    restart: unless-stopped
+    depends_on:
+      - backend
+    ports:
+      - "${FRONTEND_PORT:-3000}:80"
+
+volumes:
+  db_data:
