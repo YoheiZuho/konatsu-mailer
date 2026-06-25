@@ -116,6 +116,9 @@ node scripts/generate-icons.mjs   # public/icons/*.png を更新
 ## 実装状況メモ
 
 - **メール同期**: `internal/imapsync` が `main.go` から起動され、`is_active` な各アカウントに 1 goroutine を割り当てます。現状は **ポーリング方式（既定 30 秒間隔で最新メールを取得）** の MVP で、UID 競合は upsert で冪等化しています。接続は実装 TLS（`imap_use_tls=true`、993）／STARTTLS（false、143）の両対応。IMAP IDLE はフォローアップ予定。
+- **フォルダ**: 同期時に IMAP の `LIST`（SPECIAL-USE）で実フォルダを取得し、`accounts.folders` に保存。INBOX に加え特殊用途フォルダ（Sent / Junk(迷惑メール) / Trash / Drafts / Archive）を同期します。サイドバーは `GET /api/folders` の実フォルダを表示。任意のカスタムフォルダの本格同期はフォローアップ（現状は特殊用途＋INBOX）。
+- **AI 解析フィルタ**: `prefs.ai_filters`（プロモーション/ソーシャル/ニュースレター/自動送信）を設定画面で制御・永続化（`PATCH /me/preferences`）。LLM 解析パイプライン実装時に §6.3 の `shouldAnalyze` がこれを参照します。
+- **本文の文字化け対策**: IMAP 由来文字列は保存前に妥当な UTF-8 へサニタイズ（部分取得や非 UTF-8 charset による不正バイト列を除去）。
 - **送信**: `internal/smtpsend` は SMTPS（ポート 465 の実装 TLS）と STARTTLS（587）の両対応。
 - **リアルタイム**: `internal/ws` の Hub が `NEW_MAIL` / `SYNC_STATUS` を配信。`/api/ws` は `coder/websocket` でアップグレード。
 - **未実装（フォローアップ）**: LLM 解析パイプライン（要約・ラベル・重要度）、手動ラベル付与、IMAP フラグの逆同期（既読の IMAP 反映）、添付ダウンロード。これらが無効でも閲覧・送信・同期は動作します。

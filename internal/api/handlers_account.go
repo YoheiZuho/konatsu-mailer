@@ -6,11 +6,19 @@ import (
 
 	"github.com/gin-gonic/gin"
 	"github.com/jackc/pgx/v5"
+	"github.com/jackc/pgx/v5/pgconn"
 
 	"github.com/yoheizuho/konatsu-mailer/internal/config"
 	"github.com/yoheizuho/konatsu-mailer/internal/crypto"
 	"github.com/yoheizuho/konatsu-mailer/internal/store"
 )
+
+// isForeignKeyViolation reports whether err is a Postgres FK violation (23503),
+// which here means the account's user_id no longer exists (stale session).
+func isForeignKeyViolation(err error) bool {
+	var pgErr *pgconn.PgError
+	return errors.As(err, &pgErr) && pgErr.Code == "23503"
+}
 
 // accountResp is the API representation of a mail account. The stored password
 // is never returned.
@@ -115,6 +123,10 @@ func createAccountHandler(db *store.DB, cfg *config.Config) gin.HandlerFunc {
 		)
 		a, err := scanAccount(row)
 		if err != nil {
+			if isForeignKeyViolation(err) {
+				c.JSON(http.StatusUnauthorized, errorResponse("session_invalid", "please sign in again"))
+				return
+			}
 			c.JSON(http.StatusBadRequest, errorResponse("account_error", "failed to create account"))
 			return
 		}

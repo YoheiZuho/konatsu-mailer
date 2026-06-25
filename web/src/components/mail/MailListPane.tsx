@@ -6,7 +6,7 @@ import { useVirtualizer } from '@tanstack/react-virtual';
 
 import { useEmails, flattenEmails } from '@/hooks/queries';
 import { useToggleStar, useMarkRead } from '@/hooks/mutations';
-import { useUI } from '@/stores/ui';
+import { useUI, type MailView } from '@/stores/ui';
 import { useAppearance } from '@/stores/appearance';
 import { MailRow } from '@/components/mail/MailRow';
 import { Icon } from '@/components/common/Icon';
@@ -33,8 +33,8 @@ export function MailListPane({ selectedId, onSelect, variant, className, style }
   const aiOn = useAppearance((s) => s.aiSummaries);
   const unreadOnly = useUI((s) => s.unreadOnly);
   const setUnreadOnly = useUI((s) => s.setUnreadOnly);
-  const labelFilter = useUI((s) => s.labelFilter);
-  const setLabelFilter = useUI((s) => s.setLabelFilter);
+  const view = useUI((s) => s.view);
+  const setView = useUI((s) => s.setView);
 
   const query = useEmails();
   const emails = flattenEmails(query.data);
@@ -77,8 +77,8 @@ export function MailListPane({ selectedId, onSelect, variant, className, style }
         <ColumnToolbar
           unreadOnly={unreadOnly}
           setUnreadOnly={setUnreadOnly}
-          labelFilter={labelFilter}
-          setLabelFilter={setLabelFilter}
+          view={view}
+          setView={setView}
           fetching={query.isFetching && !query.isFetchingNextPage}
           onRefresh={() => query.refetch()}
         />
@@ -136,27 +136,27 @@ export function MailListPane({ selectedId, onSelect, variant, className, style }
 function ColumnToolbar({
   unreadOnly,
   setUnreadOnly,
-  labelFilter,
-  setLabelFilter,
+  view,
+  setView,
   fetching,
   onRefresh,
 }: {
   unreadOnly: boolean;
   setUnreadOnly: (v: boolean) => void;
-  labelFilter: string | null;
-  setLabelFilter: (v: string | null) => void;
+  view: MailView;
+  setView: (v: MailView) => void;
   fetching: boolean;
   onRefresh: () => void;
 }) {
   return (
     <div className="flex h-12 flex-none items-center gap-2 border-b border-line px-4">
-      <FilterPill active={!unreadOnly && !labelFilter} onClick={() => { setUnreadOnly(false); setLabelFilter(null); }}>
+      <FilterPill active={view === 'folder' && !unreadOnly} onClick={() => { setUnreadOnly(false); setView('folder'); }}>
         すべて
       </FilterPill>
       <FilterPill active={unreadOnly} onClick={() => setUnreadOnly(!unreadOnly)}>
         未読
       </FilterPill>
-      <FilterPill active={labelFilter === '重要'} onClick={() => setLabelFilter(labelFilter === '重要' ? null : '重要')}>
+      <FilterPill active={view === 'important'} onClick={() => setView(view === 'important' ? 'folder' : 'important')}>
         重要
       </FilterPill>
       <div className="flex-1" />

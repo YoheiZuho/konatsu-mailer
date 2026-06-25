@@ -84,6 +84,12 @@ async function request<T>(method: string, path: string, opts: RequestOptions = {
     if (refreshed) return request<T>(method, path, { ...opts, _retry: true });
   }
 
+  // A 401 that survives a refresh means the session is unusable (expired, or the
+  // user no longer exists after a DB reset) — clear it so the app returns to login.
+  if (res.status === 401 && !path.startsWith('/auth/')) {
+    authStore.getState().clear();
+  }
+
   if (!res.ok) {
     let code = 'http_error';
     let message = res.statusText;

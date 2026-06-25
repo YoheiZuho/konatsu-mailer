@@ -1,27 +1,49 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import clsx from 'clsx';
-import { useUI, type Folder } from '@/stores/ui';
-import { useLabels } from '@/hooks/queries';
+import { useUI } from '@/stores/ui';
+import { useFolders, useLabels } from '@/hooks/queries';
 import { Icon } from '@/components/common/Icon';
+import type { FolderRole, MailFolder } from '@/lib/types';
 
-const FOLDERS: ReadonlyArray<{ key: Folder; icon: string; label: string }> = [
-  { key: 'INBOX', icon: 'inbox', label: '受信トレイ' },
-  { key: 'STARRED', icon: 'star', label: 'スター付き' },
-  { key: 'IMPORTANT', icon: 'label_important', label: '重要' },
-  { key: 'SENT', icon: 'send', label: '送信済み' },
-  { key: 'DRAFTS', icon: 'draft', label: '下書き' },
-  { key: 'SPAM', icon: 'report', label: '迷惑メール' },
-  { key: 'TRASH', icon: 'delete', label: 'ゴミ箱' },
-];
+// Display metadata per IMAP special-use role.
+const ROLE_META: Record<Exclude<FolderRole, ''>, { label: string; icon: string; order: number }> = {
+  inbox: { label: '受信トレイ', icon: 'inbox', order: 0 },
+  sent: { label: '送信済み', icon: 'send', order: 3 },
+  drafts: { label: '下書き', icon: 'draft', order: 4 },
+  junk: { label: '迷惑メール', icon: 'report', order: 5 },
+  archive: { label: 'アーカイブ', icon: 'archive', order: 6 },
+  trash: { label: 'ゴミ箱', icon: 'delete', order: 7 },
+};
+
+function folderLabel(f: MailFolder): string {
+  return f.role && ROLE_META[f.role] ? ROLE_META[f.role].label : f.name;
+}
+function folderIcon(f: MailFolder): string {
+  return f.role && ROLE_META[f.role] ? ROLE_META[f.role].icon : 'folder';
+}
+function folderOrder(f: MailFolder): number {
+  return f.role && ROLE_META[f.role] ? ROLE_META[f.role].order : 8;
+}
 
 export function Sidebar({ width }: { width?: number }) {
   const folder = useUI((s) => s.folder);
+  const view = useUI((s) => s.view);
   const labelFilter = useUI((s) => s.labelFilter);
   const setFolder = useUI((s) => s.setFolder);
+  const setView = useUI((s) => s.setView);
   const setLabelFilter = useUI((s) => s.setLabelFilter);
   const openCompose = useUI((s) => s.openCompose);
+
+  const { data: folders } = useFolders();
   const { data: labels } = useLabels();
+
+  const inbox = folders?.find((f) => f.role === 'inbox' || f.name === 'INBOX');
+  const others = (folders ?? [])
+    .filter((f) => f !== inbox)
+    .sort((a, b) => folderOrder(a) - folderOrder(b) || a.name.localeCompare(b.name));
+
+  const folderActive = (name: string) => view === 'folder' && folder === name && !labelFilter;
 
   return (
     <nav
@@ -36,13 +58,24 @@ export function Sidebar({ width }: { width?: number }) {
         作成
       </button>
 
-      {FOLDERS.map((f) => (
-        <SidebarItem
-          key={f.key}
-          icon={f.icon}
-          label={f.label}
-          active={folder === f.key && !labelFilter}
-          onClick={() => setFolder(f.key)}
+      {/* Inbox + virtual views */}
+      <Item
+        icon="inbox"
+        label="受信トレイ"
+        active={folderActive(inbox?.name ?? 'INBOX')}
+        onClick={() => setFolder(inbox?.name ?? 'INBOX')}
+      />
+      <Item icon="star" label="スター付き" active={view === 'starred'} onClick={() => setView('starred')} />
+      <Item icon="label_important" label="重要" active={view === 'important'} onClick={() => setView('important')} />
+
+      {/* Other IMAP folders */}
+      {others.map((f) => (
+        <Item
+          key={f.name}
+          icon={folderIcon(f)}
+          label={folderLabel(f)}
+          active={folderActive(f.name)}
+          onClick={() => setFolder(f.name)}
         />
       ))}
 
@@ -50,7 +83,7 @@ export function Sidebar({ width }: { width?: number }) {
       <div className="pb-1 pl-[22px] pr-3 pt-3 text-[13px] font-semibold text-content-sub">ラベル</div>
 
       {(labels ?? []).map((label) => (
-        <SidebarItem
+        <Item
           key={label.id ?? label.name}
           dotColor={label.color}
           label={label.name}
@@ -79,7 +112,7 @@ interface ItemProps {
   onClick: () => void;
 }
 
-function SidebarItem({ icon, dotColor, label, active, onClick }: ItemProps) {
+function Item({ icon, dotColor, label, active, onClick }: ItemProps) {
   return (
     <button
       onClick={onClick}
@@ -94,10 +127,7 @@ function SidebarItem({ icon, dotColor, label, active, onClick }: ItemProps) {
         {icon ? (
           <Icon name={icon} size={20} className={active ? 'text-brand' : 'text-content-sub'} />
         ) : (
-          <span
-            className="h-[11px] w-[11px] rounded-[3px]"
-            style={{ background: dotColor ?? 'var(--text-sub)' }}
-          />
+          <span className="h-[11px] w-[11px] rounded-[3px]" style={{ background: dotColor ?? 'var(--text-sub)' }} />
         )}
       </span>
       <span className="flex-1 truncate">{label}</span>

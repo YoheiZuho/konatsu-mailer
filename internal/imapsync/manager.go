@@ -9,6 +9,7 @@ import (
 	"log/slog"
 	"strings"
 	"time"
+	"unicode/utf8"
 
 	"github.com/emersion/go-imap/v2"
 	"github.com/emersion/go-imap/v2/imapclient"
@@ -146,9 +147,27 @@ func (m *SyncManager) session(ctx context.Context, a domain.Account) error {
 	}
 	m.broadcastStatus(a, "connected")
 
+	// Discover the account's mailboxes (Inbox, Sent, Junk, Trash, ...) and cache
+	// them so the UI can show real IMAP folders.
+	mailboxes := listMailboxes(c)
+	if len(mailboxes) > 0 {
+		folders := make([]store.Folder, len(mailboxes))
+		for i, mb := range mailboxes {
+			folders[i] = store.Folder{Name: mb.Name, Role: mb.Role}
+		}
+		_ = m.db.SaveAccountFolders(ctx, a.ID, folders)
+	}
+	syncSet := foldersToSync(mailboxes)
+
 	for {
-		if err := m.syncFolder(ctx, c, &a, defaultFolder); err != nil {
-			return fmt.Errorf("sync: %w", err)
+		for _, folder := range syncSet {
+			if ctx.Err() != nil {
+				return nil
+			}
+			if err := m.syncFolder(ctx, c, &a, folder); err != nil {
+				// Likely a dropped connection; reconnect from the supervisor.
+				return fmt.Errorf("sync %s: %w", folder, err)
+			}
 		}
 		select {
 		case <-ctx.Done():
@@ -266,7 +285,7 @@ func buildEmail(a *domain.Account, folder string, msg *imapclient.FetchMessageBu
 		DateSent:       msg.InternalDate,
 	}
 	if env != nil {
-		e.Subject = env.Subject
+		e.Subject = cleanUTF8(env.Subject)
 		e.MessageID = env.MessageID
 		if len(env.InReplyTo) > 0 {
 			e.InReplyTo = env.InReplyTo[0]
@@ -275,7 +294,7 @@ func buildEmail(a *domain.Account, folder string, msg *imapclient.FetchMessageBu
 			e.DateSent = env.Date
 		}
 		if len(env.From) > 0 {
-			e.SenderName = env.From[0].Name
+			e.SenderName = cleanUTF8(env.From[0].Name)
 			e.SenderAddr = env.From[0].Addr()
 		}
 		e.Recipients = mapRecipients(env)
@@ -289,11 +308,21 @@ func buildEmail(a *domain.Account, folder string, msg *imapclient.FetchMessageBu
 	return e
 }
 
+// cleanUTF8 strips invalid UTF-8 byte sequences so values are safe to store in
+// Postgres text columns. IMAP previews fetched as raw partial bytes may be in a
+// non-UTF-8 charset or cut mid-multibyte-character.
+func cleanUTF8(s string) string {
+	if utf8.ValidString(s) {
+		return s
+	}
+	return strings.ToValidUTF8(s, "")
+}
+
 func mapRecipients(env *imap.Envelope) domain.Recipients {
 	out := domain.Recipients{}
 	add := func(addrs []imap.Address, typ string) {
 		for _, a := range addrs {
-			out = append(out, domain.Recipient{Name: a.Name, Addr: a.Addr(), Type: typ})
+			out = append(out, domain.Recipient{Name: cleanUTF8(a.Name), Addr: a.Addr(), Type: typ})
 		}
 	}
 	add(env.To, "to")
@@ -317,10 +346,10 @@ func previewText(raw []byte) string {
 	if len(raw) == 0 {
 		return ""
 	}
-	s := strings.TrimSpace(string(raw))
+	s := cleanUTF8(string(raw))
 	s = strings.Join(strings.Fields(s), " ") // collapse whitespace/newlines
-	if len(s) > 500 {
-		s = s[:500]
+	if utf8.RuneCountInString(s) > 500 {
+		s = string([]rune(s)[:500])
 	}
 	return s
 }

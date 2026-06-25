@@ -66,9 +66,11 @@ docker compose --profile translate up --build
 
 ## 永続化
 
-PostgreSQL のデータはリポジトリ直下の `./db_data`（バインドマウント）に保存されます。`.gitignore` 済みです。完全初期化するにはコンテナ停止後に `db_data` を削除します。
+PostgreSQL のデータは **Docker 管理の名前付きボリューム `db_data`** に保存されます。`up` / `down` / `restart` / コンテナ再作成では消えません。**消えるのは `docker compose down -v` を実行したときだけ**です。
 
 ```bash
-docker compose down
-rm -rf db_data
+docker compose down          # データは残る
+docker compose down -v       # データも削除（完全初期化）
 ```
+
+> ⚠️ **PostgreSQL のメジャーバージョンを変えない**でください（例 17→18）。既存のデータディレクトリは前のバージョンで初期化されているため、別バージョンでは起動できず「データが消えた／DBが壊れた」ように見える原因になります（`docker-compose.yml` では `postgres:17-alpine` に固定済み）。やむを得ず変える場合はボリュームを作り直す必要があります（`down -v`）。

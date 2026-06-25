@@ -9,19 +9,21 @@ import {
 } from '@tanstack/react-query';
 import { useShallow } from 'zustand/react/shallow';
 import { api } from '@/lib/api';
-import { useUI, type Folder } from '@/stores/ui';
+import { useUI, type MailView } from '@/stores/ui';
 import type {
   Account,
   EmailListItem,
   EmailListResponse,
   Label,
   LLMConfig,
+  MailFolder,
   Preferences,
   ThreadDetail,
 } from '@/lib/types';
 
 export interface EmailFilter {
-  folder: Folder;
+  folder: string;
+  view: MailView;
   label: string | null;
   q: string;
   unread: boolean;
@@ -30,6 +32,7 @@ export interface EmailFilter {
 export const queryKeys = {
   emails: (f: EmailFilter) => ['emails', f] as const,
   email: (id: string) => ['email', id] as const,
+  folders: ['folders'] as const,
   labels: ['labels'] as const,
   accounts: ['accounts'] as const,
   llmConfigs: ['llm-configs'] as const,
@@ -38,18 +41,15 @@ export const queryKeys = {
 
 function buildEmailQuery(f: EmailFilter, cursor?: string | null): string {
   const params = new URLSearchParams();
-  // Map virtual folders to query flags; real folders pass through as `folder`.
-  switch (f.folder) {
-    case 'STARRED':
-      params.set('starred', 'true');
-      break;
-    case 'IMPORTANT':
-      params.set('important', 'true');
-      break;
-    default:
-      params.set('folder', f.folder);
+  if (f.label) {
+    params.set('label', f.label);
+  } else if (f.view === 'starred') {
+    params.set('starred', 'true');
+  } else if (f.view === 'important') {
+    params.set('important', 'true');
+  } else {
+    params.set('folder', f.folder);
   }
-  if (f.label) params.set('label', f.label);
   if (f.q.trim()) params.set('q', f.q.trim());
   if (f.unread) params.set('unread', 'true');
   params.set('limit', '50');
@@ -62,6 +62,7 @@ export function useEmails() {
   const filter: EmailFilter = useUI(
     useShallow((s) => ({
       folder: s.folder,
+      view: s.view,
       label: s.labelFilter,
       q: s.search,
       unread: s.unreadOnly,
@@ -95,6 +96,14 @@ export function useThread(id: string | null) {
     queryKey: id ? queryKeys.email(id) : ['email', 'none'],
     queryFn: () => api.get<ThreadDetail>(`/emails/${id}`),
     enabled: !!id,
+  });
+}
+
+export function useFolders() {
+  return useQuery({
+    queryKey: queryKeys.folders,
+    queryFn: () => api.get<{ items: MailFolder[] }>('/folders').then((r) => r.items ?? []),
+    staleTime: 60_000,
   });
 }
 

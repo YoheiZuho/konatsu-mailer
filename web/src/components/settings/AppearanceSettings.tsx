@@ -13,11 +13,13 @@ export function AppearanceSettings() {
     brand,
     density,
     aiSummaries,
+    aiFilters,
     translateTarget,
     setTheme,
     setBrand,
     setDensity,
     setAiSummaries,
+    setAiFilters,
     setTranslateTarget,
   } = useAppearance();
 
@@ -94,6 +96,29 @@ export function AppearanceSettings() {
         </div>
         <Toggle checked={aiSummaries} onChange={setAiSummaries} label="AI要約を表示" />
       </div>
+
+      <Field label="AI解析を行わないメール" hint="チェックした種別はAIの自動分類・要約の対象外になります（コスト削減）。">
+        <div className="flex flex-col gap-2.5">
+          {(
+            [
+              { key: 'promotions', label: 'プロモーション' },
+              { key: 'social', label: 'ソーシャル通知' },
+              { key: 'newsletters', label: 'ニュースレター' },
+              { key: 'automated', label: '自動送信メール' },
+            ] as const
+          ).map((c) => (
+            <label key={c.key} className="flex cursor-pointer items-center gap-3 text-[13.5px] text-content">
+              <input
+                type="checkbox"
+                checked={aiFilters[c.key]}
+                onChange={(e) => setAiFilters({ ...aiFilters, [c.key]: e.target.checked })}
+                className="h-[18px] w-[18px] flex-none accent-brand"
+              />
+              {c.label}
+            </label>
+          ))}
+        </div>
+      </Field>
 
       {translationEnabled && (
         <Field label="翻訳先の言語" hint="メール本文の「翻訳」で使用する言語です。">

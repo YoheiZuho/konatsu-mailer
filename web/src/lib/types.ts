@@ -171,6 +171,21 @@ export interface LLMTestResult {
 export type ThemePref = 'system' | 'light' | 'dark';
 export type Density = 'comfortable' | 'compact';
 
+/** Which mail categories AI analysis skips (true = no AI summary). */
+export interface AiFilters {
+  promotions: boolean;
+  social: boolean;
+  newsletters: boolean;
+  automated: boolean;
+}
+
+/** An IMAP mailbox with an optional special-use role. */
+export type FolderRole = 'inbox' | 'sent' | 'drafts' | 'junk' | 'trash' | 'archive' | '';
+export interface MailFolder {
+  name: string;
+  role: FolderRole;
+}
+
 // --- Translation (LibreTranslate) ---
 
 export interface TranslateConfig {
@@ -194,6 +209,7 @@ export interface Preferences {
   brand_color: string;
   density: Density;
   ai_summaries: boolean;
+  ai_filters?: AiFilters;
 }
 
 export interface SendEmailInput {

@@ -6,7 +6,8 @@
 import { create } from 'zustand';
 import type { SyncState } from '@/lib/types';
 
-export type Folder = 'INBOX' | 'STARRED' | 'IMPORTANT' | 'SENT' | 'DRAFTS' | 'SPAM' | 'TRASH';
+/** Which list view is active: a real IMAP folder, or a virtual starred/important view. */
+export type MailView = 'folder' | 'starred' | 'important';
 
 export interface ComposeState {
   open: boolean;
@@ -31,7 +32,9 @@ const emptyCompose: ComposeState = {
 };
 
 interface UIState {
-  folder: Folder;
+  /** Active IMAP mailbox name (when view === 'folder'). */
+  folder: string;
+  view: MailView;
   labelFilter: string | null;
   search: string;
   unreadOnly: boolean;
@@ -40,7 +43,8 @@ interface UIState {
   compose: ComposeState;
   syncStatus: SyncState;
 
-  setFolder: (f: Folder) => void;
+  setFolder: (name: string) => void;
+  setView: (v: MailView) => void;
   setLabelFilter: (label: string | null) => void;
   setSearch: (q: string) => void;
   setUnreadOnly: (v: boolean) => void;
@@ -56,6 +60,7 @@ interface UIState {
 
 export const useUI = create<UIState>((set) => ({
   folder: 'INBOX',
+  view: 'folder',
   labelFilter: null,
   search: '',
   unreadOnly: false,
@@ -64,8 +69,9 @@ export const useUI = create<UIState>((set) => ({
   compose: emptyCompose,
   syncStatus: 'connected',
 
-  setFolder: (f) => set({ folder: f, labelFilter: null }),
-  setLabelFilter: (label) => set({ labelFilter: label, folder: 'INBOX' }),
+  setFolder: (name) => set({ folder: name, view: 'folder', labelFilter: null }),
+  setView: (v) => set({ view: v, labelFilter: null }),
+  setLabelFilter: (label) => set({ labelFilter: label, view: 'folder' }),
   setSearch: (q) => set({ search: q }),
   setUnreadOnly: (v) => set({ unreadOnly: v }),
   toggleSidebar: () => set((s) => ({ sidebarOpen: !s.sidebarOpen })),

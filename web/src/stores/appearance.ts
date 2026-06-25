@@ -12,9 +12,17 @@ import { create } from 'zustand';
 import { applyBrand, applyTheme, type Theme } from '@/lib/theme';
 import { api } from '@/lib/api';
 import { authStore } from '@/stores/auth';
-import type { Density, Preferences } from '@/lib/types';
+import type { AiFilters, Density, Preferences } from '@/lib/types';
 
 export const DEFAULT_BRAND = '#ffd20a';
+
+/** Default AI analysis filters (true = skip AI summary for that category). */
+export const DEFAULT_AI_FILTERS: AiFilters = {
+  promotions: true,
+  social: true,
+  newsletters: true,
+  automated: true,
+};
 
 /** localStorage keys (mirrors the design doc). */
 const LS = {
@@ -25,7 +33,18 @@ const LS = {
   translateTarget: 'ui.translateTarget',
   sidebarWidth: 'ui.sidebarWidth',
   listWidth: 'ui.listWidth',
+  aiFilters: 'ui.aiFilters',
 } as const;
+
+function readAiFilters(): AiFilters {
+  const raw = lsGet(LS.aiFilters);
+  if (!raw) return { ...DEFAULT_AI_FILTERS };
+  try {
+    return { ...DEFAULT_AI_FILTERS, ...(JSON.parse(raw) as Partial<AiFilters>) };
+  } catch {
+    return { ...DEFAULT_AI_FILTERS };
+  }
+}
 
 export const SIDEBAR_WIDTH = { default: 256, min: 200, max: 400 } as const;
 export const LIST_WIDTH = { default: 430, min: 320, max: 680 } as const;
@@ -70,6 +89,8 @@ interface AppearanceState {
   aiSummaries: boolean;
   /** Preferred target language for email translation (ISO code). */
   translateTarget: string;
+  /** Per-category AI analysis filters (true = skip AI summary). */
+  aiFilters: AiFilters;
   /** Resizable pane widths (px). */
   sidebarWidth: number;
   listWidth: number;
@@ -77,6 +98,7 @@ interface AppearanceState {
   setBrand: (hex: string) => void;
   setDensity: (d: Density) => void;
   setAiSummaries: (on: boolean) => void;
+  setAiFilters: (f: AiFilters) => void;
   setTranslateTarget: (code: string) => void;
   setSidebarWidth: (w: number) => void;
   setListWidth: (w: number) => void;
@@ -98,6 +120,7 @@ function syncToServer(get: () => AppearanceState) {
         brand_color: s.brand,
         density: s.density,
         ai_summaries: s.aiSummaries,
+        ai_filters: s.aiFilters,
       })
       .catch(() => {
         /* preferences are non-critical; ignore transient failures */
@@ -107,7 +130,7 @@ function syncToServer(get: () => AppearanceState) {
 
 function readInitial(): Pick<
   AppearanceState,
-  'theme' | 'brand' | 'density' | 'aiSummaries' | 'translateTarget' | 'sidebarWidth' | 'listWidth'
+  'theme' | 'brand' | 'density' | 'aiSummaries' | 'aiFilters' | 'translateTarget' | 'sidebarWidth' | 'listWidth'
 > {
   const theme = lsGet(LS.theme);
   const density = lsGet(LS.density);
@@ -116,6 +139,7 @@ function readInitial(): Pick<
     brand: lsGet(LS.brand) ?? DEFAULT_BRAND,
     density: density === 'compact' ? 'compact' : 'comfortable',
     aiSummaries: lsGet(LS.ai) !== 'false',
+    aiFilters: readAiFilters(),
     translateTarget: lsGet(LS.translateTarget) ?? 'ja',
     sidebarWidth: clampNum(lsGet(LS.sidebarWidth), SIDEBAR_WIDTH.default, SIDEBAR_WIDTH.min, SIDEBAR_WIDTH.max),
     listWidth: clampNum(lsGet(LS.listWidth), LIST_WIDTH.default, LIST_WIDTH.min, LIST_WIDTH.max),
@@ -146,6 +170,11 @@ export const useAppearance = create<AppearanceState>((set, get) => ({
     lsSet(LS.ai, String(on));
     syncToServer(get);
   },
+  setAiFilters: (f) => {
+    set({ aiFilters: f });
+    lsSet(LS.aiFilters, JSON.stringify(f));
+    syncToServer(get);
+  },
   setTranslateTarget: (code) => {
     set({ translateTarget: code });
     lsSet(LS.translateTarget, code);
@@ -161,17 +190,22 @@ export const useAppearance = create<AppearanceState>((set, get) => ({
     lsSet(LS.listWidth, String(v));
   },
   hydrateFromServer: (prefs) => {
+    const aiFilters = prefs.ai_filters
+      ? { ...DEFAULT_AI_FILTERS, ...prefs.ai_filters }
+      : get().aiFilters;
     const next = {
       theme: prefs.theme ?? get().theme,
       brand: prefs.brand_color ?? get().brand,
       density: prefs.density ?? get().density,
       aiSummaries: prefs.ai_summaries ?? get().aiSummaries,
+      aiFilters,
     };
     set(next);
     lsSet(LS.theme, next.theme);
     lsSet(LS.brand, next.brand);
     lsSet(LS.density, next.density);
     lsSet(LS.ai, String(next.aiSummaries));
+    lsSet(LS.aiFilters, JSON.stringify(next.aiFilters));
     applyTheme(next.theme);
     applyBrand(next.brand);
   },
