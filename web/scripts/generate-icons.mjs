@@ -171,6 +171,50 @@ function write(name, S, maskable) {
   console.log(`wrote ${name} (${S}x${S}, ${png.length} bytes)`);
 }
 
+// --- Favicon: a real .ico (PNG-encoded entries) + PNG favicons in public root ---
+
+const publicRoot = resolve(dirname(fileURLToPath(import.meta.url)), '../public');
+
+/** Build a Vista+ ICO whose entries are PNG-encoded (widely supported). */
+function buildICO(sizes) {
+  const images = sizes.map((s) => encodePNG(renderRGBA(s, false), s));
+  const count = images.length;
+
+  const header = Buffer.alloc(6);
+  header.writeUInt16LE(0, 0); // reserved
+  header.writeUInt16LE(1, 2); // type: icon
+  header.writeUInt16LE(count, 4);
+
+  const dir = Buffer.alloc(16 * count);
+  let offset = 6 + 16 * count;
+  images.forEach((img, i) => {
+    const s = sizes[i];
+    const e = 16 * i;
+    dir[e] = s >= 256 ? 0 : s; // width (0 means 256)
+    dir[e + 1] = s >= 256 ? 0 : s; // height
+    dir[e + 2] = 0; // palette colors
+    dir[e + 3] = 0; // reserved
+    dir.writeUInt16LE(1, e + 4); // color planes
+    dir.writeUInt16LE(32, e + 6); // bits per pixel
+    dir.writeUInt32LE(img.length, e + 8);
+    dir.writeUInt32LE(offset, e + 12);
+    offset += img.length;
+  });
+
+  return Buffer.concat([header, dir, ...images]);
+}
+
+function writePublic(name, buf, label) {
+  writeFileSync(resolve(publicRoot, name), buf);
+  console.log(`wrote ${name} (${label}, ${buf.length} bytes)`);
+}
+
+// Maskable + standard PWA icons.
 write('icon-192.png', 192, false);
 write('icon-512.png', 512, false);
 write('icon-maskable-512.png', 512, true);
+
+// Favicons (public root).
+writePublic('favicon-16.png', encodePNG(renderRGBA(16, false), 16), '16x16');
+writePublic('favicon-32.png', encodePNG(renderRGBA(32, false), 32), '32x32');
+writePublic('favicon.ico', buildICO([16, 32, 48]), 'ico 16/32/48');
