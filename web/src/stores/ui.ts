@@ -45,6 +45,7 @@ interface UIState {
   setSearch: (q: string) => void;
   setUnreadOnly: (v: boolean) => void;
   toggleSidebar: () => void;
+  setSidebarOpen: (v: boolean) => void;
   setSettingsOpen: (v: boolean) => void;
   setSyncStatus: (s: SyncState) => void;
 
@@ -68,6 +69,7 @@ export const useUI = create<UIState>((set) => ({
   setSearch: (q) => set({ search: q }),
   setUnreadOnly: (v) => set({ unreadOnly: v }),
   toggleSidebar: () => set((s) => ({ sidebarOpen: !s.sidebarOpen })),
+  setSidebarOpen: (v) => set({ sidebarOpen: v }),
   setSettingsOpen: (v) => set({ settingsOpen: v }),
   setSyncStatus: (s) => set({ syncStatus: s }),
 

@@ -27,6 +27,7 @@ export function LoginPage() {
   const navigate = useNavigate();
   const location = useLocation();
   const setTokens = useAuth((s) => s.setTokens);
+  const setEmailStore = useAuth((s) => s.setEmail);
 
   const [mode, setMode] = useState<Mode>('login');
   const [allowRegistration, setAllowRegistration] = useState(true);
@@ -61,6 +62,7 @@ export function LoginPage() {
       if (mode === 'login') {
         const tokens = await api.post<AuthTokens>('/auth/login', { email, password });
         setTokens(tokens);
+        setEmailStore(email);
       } else {
         const body: RegisterInput = { email, password, display_name: displayName };
         if (setupAccount && account.imap_host && account.smtp_host && account.password) {
@@ -72,6 +74,7 @@ export function LoginPage() {
         }
         const tokens = await api.post<AuthTokens>('/auth/register', body);
         setTokens(tokens);
+        setEmailStore(email);
       }
       navigate(redirectTo, { replace: true });
     } catch (err) {

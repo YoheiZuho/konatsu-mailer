@@ -23,7 +23,18 @@ const LS = {
   density: 'ui.density',
   ai: 'ui.aiSummaries',
   translateTarget: 'ui.translateTarget',
+  sidebarWidth: 'ui.sidebarWidth',
+  listWidth: 'ui.listWidth',
 } as const;
+
+export const SIDEBAR_WIDTH = { default: 256, min: 200, max: 400 } as const;
+export const LIST_WIDTH = { default: 430, min: 320, max: 680 } as const;
+
+function clampNum(raw: string | null, def: number, min: number, max: number): number {
+  const n = raw ? parseInt(raw, 10) : NaN;
+  if (Number.isNaN(n)) return def;
+  return Math.min(Math.max(n, min), max);
+}
 
 function lsGet(key: string): string | null {
   try {
@@ -59,11 +70,16 @@ interface AppearanceState {
   aiSummaries: boolean;
   /** Preferred target language for email translation (ISO code). */
   translateTarget: string;
+  /** Resizable pane widths (px). */
+  sidebarWidth: number;
+  listWidth: number;
   setTheme: (t: Theme) => void;
   setBrand: (hex: string) => void;
   setDensity: (d: Density) => void;
   setAiSummaries: (on: boolean) => void;
   setTranslateTarget: (code: string) => void;
+  setSidebarWidth: (w: number) => void;
+  setListWidth: (w: number) => void;
   /** Apply server-stored preferences on login without re-syncing back. */
   hydrateFromServer: (prefs: Partial<Preferences>) => void;
 }
@@ -91,7 +107,7 @@ function syncToServer(get: () => AppearanceState) {
 
 function readInitial(): Pick<
   AppearanceState,
-  'theme' | 'brand' | 'density' | 'aiSummaries' | 'translateTarget'
+  'theme' | 'brand' | 'density' | 'aiSummaries' | 'translateTarget' | 'sidebarWidth' | 'listWidth'
 > {
   const theme = lsGet(LS.theme);
   const density = lsGet(LS.density);
@@ -101,6 +117,8 @@ function readInitial(): Pick<
     density: density === 'compact' ? 'compact' : 'comfortable',
     aiSummaries: lsGet(LS.ai) !== 'false',
     translateTarget: lsGet(LS.translateTarget) ?? 'ja',
+    sidebarWidth: clampNum(lsGet(LS.sidebarWidth), SIDEBAR_WIDTH.default, SIDEBAR_WIDTH.min, SIDEBAR_WIDTH.max),
+    listWidth: clampNum(lsGet(LS.listWidth), LIST_WIDTH.default, LIST_WIDTH.min, LIST_WIDTH.max),
   };
 }
 
@@ -131,6 +149,16 @@ export const useAppearance = create<AppearanceState>((set, get) => ({
   setTranslateTarget: (code) => {
     set({ translateTarget: code });
     lsSet(LS.translateTarget, code);
+  },
+  setSidebarWidth: (w) => {
+    const v = Math.min(Math.max(Math.round(w), SIDEBAR_WIDTH.min), SIDEBAR_WIDTH.max);
+    set({ sidebarWidth: v });
+    lsSet(LS.sidebarWidth, String(v));
+  },
+  setListWidth: (w) => {
+    const v = Math.min(Math.max(Math.round(w), LIST_WIDTH.min), LIST_WIDTH.max);
+    set({ listWidth: v });
+    lsSet(LS.listWidth, String(v));
   },
   hydrateFromServer: (prefs) => {
     const next = {

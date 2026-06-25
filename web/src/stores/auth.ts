@@ -10,7 +10,10 @@ interface AuthState {
   accessToken: string | null;
   refreshToken: string | null;
   expiresAt: string | null;
+  /** The signed-in user's email, kept for the account avatar/menu. */
+  email: string | null;
   setTokens: (tokens: AuthTokens) => void;
+  setEmail: (email: string) => void;
   clear: () => void;
 }
 
@@ -20,13 +23,15 @@ export const useAuth = create<AuthState>()(
       accessToken: null,
       refreshToken: null,
       expiresAt: null,
+      email: null,
       setTokens: (t) =>
         set({
           accessToken: t.access_token,
           refreshToken: t.refresh_token,
           expiresAt: t.expires_at,
         }),
-      clear: () => set({ accessToken: null, refreshToken: null, expiresAt: null }),
+      setEmail: (email) => set({ email }),
+      clear: () => set({ accessToken: null, refreshToken: null, expiresAt: null, email: null }),
     }),
     { name: 'auth' },
   ),

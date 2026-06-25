@@ -15,7 +15,7 @@ const FOLDERS: ReadonlyArray<{ key: Folder; icon: string; label: string }> = [
   { key: 'TRASH', icon: 'delete', label: 'ゴミ箱' },
 ];
 
-export function Sidebar() {
+export function Sidebar({ width }: { width?: number }) {
   const folder = useUI((s) => s.folder);
   const labelFilter = useUI((s) => s.labelFilter);
   const setFolder = useUI((s) => s.setFolder);
@@ -24,7 +24,10 @@ export function Sidebar() {
   const { data: labels } = useLabels();
 
   return (
-    <nav className="flex w-[236px] flex-none flex-col overflow-y-auto border-r border-line bg-surface py-2 pb-4">
+    <nav
+      className="flex flex-none flex-col overflow-y-auto bg-surface py-2 pb-4"
+      style={width ? { width } : undefined}
+    >
       <button
         onClick={() => openCompose()}
         className="mb-3.5 ml-3.5 mr-3 mt-1.5 flex h-12 items-center gap-3.5 self-start rounded-3xl border border-line bg-surface pl-4 pr-6 text-[14px] font-semibold text-content shadow-fab transition hover:bg-hover hover:shadow-md"
