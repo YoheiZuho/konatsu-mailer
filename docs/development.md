@@ -113,7 +113,10 @@ cd web
 node scripts/generate-icons.mjs   # public/icons/*.png を更新
 ```
 
-## 実装メモ
+## 実装状況メモ
 
-- ジョブ受け渡しはプロセス内 channel を `JobQueue` interface で抽象化（将来 Redis Stream / NATS に差し替え可能）。
-- フロントエンドの API 契約は [詳細設計.md §7/§8](../詳細設計.md) が一次情報です。バックエンドの一部ハンドラはスケルトン状態のため、UI は空データでもエラーにならないよう実装されています。
+- **メール同期**: `internal/imapsync` が `main.go` から起動され、`is_active` な各アカウントに 1 goroutine を割り当てます。現状は **ポーリング方式（既定 30 秒間隔で最新メールを取得）** の MVP で、UID 競合は upsert で冪等化しています。接続は実装 TLS（`imap_use_tls=true`、993）／STARTTLS（false、143）の両対応。IMAP IDLE はフォローアップ予定。
+- **送信**: `internal/smtpsend` は SMTPS（ポート 465 の実装 TLS）と STARTTLS（587）の両対応。
+- **リアルタイム**: `internal/ws` の Hub が `NEW_MAIL` / `SYNC_STATUS` を配信。`/api/ws` は `coder/websocket` でアップグレード。
+- **未実装（フォローアップ）**: LLM 解析パイプライン（要約・ラベル・重要度）、手動ラベル付与、IMAP フラグの逆同期（既読の IMAP 反映）、添付ダウンロード。これらが無効でも閲覧・送信・同期は動作します。
+- フロントエンドの API 契約は [詳細設計.md §7/§8](../詳細設計.md) が一次情報です。

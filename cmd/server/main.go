@@ -13,7 +13,9 @@ import (
 
 	"github.com/yoheizuho/konatsu-mailer/internal/api"
 	"github.com/yoheizuho/konatsu-mailer/internal/config"
+	"github.com/yoheizuho/konatsu-mailer/internal/imapsync"
 	"github.com/yoheizuho/konatsu-mailer/internal/store"
+	"github.com/yoheizuho/konatsu-mailer/internal/ws"
 )
 
 func main() {
@@ -38,15 +40,32 @@ func main() {
 		os.Exit(1)
 	}
 
+	// Root context cancelled on SIGINT/SIGTERM; ties background workers to the
+	// process lifetime.
+	rootCtx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
+	defer stop()
+
+	// Realtime hub + IMAP sync workers.
+	hub := ws.NewHub()
+	go hub.Run(rootCtx)
+
+	syncMgr := imapsync.NewManager(db, cfg, hub)
+	go func() {
+		if err := syncMgr.Start(rootCtx); err != nil {
+			logger.Error("sync manager stopped", slog.Any("error", err))
+		}
+	}()
+
 	gin.SetMode(gin.ReleaseMode)
-	r := api.NewRouter(cfg, db)
+	r := api.NewRouter(cfg, db, hub)
 
 	srv := &http.Server{
-		Addr:         ":8080",
-		Handler:      r,
-		ReadTimeout:  15 * time.Second,
-		WriteTimeout: 15 * time.Second,
-		IdleTimeout:  60 * time.Second,
+		Addr:    ":8080",
+		Handler: r,
+		// No Read/Write timeouts: the WebSocket (/api/ws) and SSE (/api/ai/draft)
+		// endpoints are long-lived. ReadHeaderTimeout still guards the handshake.
+		ReadHeaderTimeout: 15 * time.Second,
+		IdleTimeout:       60 * time.Second,
 	}
 
 	go func() {
@@ -57,14 +76,11 @@ func main() {
 		}
 	}()
 
-	quit := make(chan os.Signal, 1)
-	signal.Notify(quit, syscall.SIGINT, syscall.SIGTERM)
-	<-quit
-
+	<-rootCtx.Done()
 	logger.Info("server shutting down")
-	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	shutdownCtx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
-	if err := srv.Shutdown(ctx); err != nil {
+	if err := srv.Shutdown(shutdownCtx); err != nil {
 		logger.Error("server forced to shutdown", slog.Any("error", err))
 	}
 	logger.Info("server exited")

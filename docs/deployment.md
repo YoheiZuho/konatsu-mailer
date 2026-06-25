@@ -54,7 +54,7 @@ npx web-push generate-vapid-keys
 
 AI 下書きの SSE（`/api/ai/draft`）と WebSocket（`/api/ws`）は長時間接続です。プロキシ側はこれらのパスでバッファリング無効・長いタイムアウトが必要です（同梱の `web/nginx.conf` は `/api` で `proxy_buffering off` と長い `proxy_read_timeout` を設定済み）。
 
-> 補足: バックエンドの `cmd/server/main.go` は `http.Server` に `WriteTimeout: 15s` を設定しています。SSE/WebSocket を長時間維持するには、これらのルートでタイムアウトを無効化する（`http.ResponseController` を使う等）か、サーバー設定を見直す必要があります。
+> バックエンドの `http.Server` は SSE/WebSocket のために Read/Write タイムアウトを無効化し（`ReadHeaderTimeout` のみハンドシェイク保護に使用）、長時間接続を維持します。
 
 ## セキュリティチェックリスト
 
