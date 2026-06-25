@@ -35,6 +35,9 @@ services:
       LLM_DEFAULT_BASE_URL: ${LLM_DEFAULT_BASE_URL:-https://api.openai.com/v1}
       LLM_DEFAULT_MODEL: ${LLM_DEFAULT_MODEL:-gpt-4o-mini}
       LLM_DEFAULT_API_KEY: ${LLM_DEFAULT_API_KEY:-}
+      LIBRETRANSLATE_URL: ${LIBRETRANSLATE_URL:-}
+      LIBRETRANSLATE_API_KEY: ${LIBRETRANSLATE_API_KEY:-}
+      TRANSLATE_DEFAULT_TARGET: ${TRANSLATE_DEFAULT_TARGET:-ja}
     ports:
       - "8080:8080"
 
@@ -44,12 +47,28 @@ services:
       dockerfile: Dockerfile
       args:
         # Same-origin: nginx in the frontend container proxies /api to backend.
-        VITE_API_BASE_URL: /api
+        VITE_API_BASE_URL: http://localhost:8080/api
     restart: unless-stopped
     depends_on:
       - backend
     ports:
       - "${FRONTEND_PORT:-3000}:80"
 
+  # Optional self-hosted translation engine. Enable with:
+  #   docker compose --profile translate up
+  # and set LIBRETRANSLATE_URL=http://libretranslate:5000 in your .env.
+  libretranslate:
+    image: libretranslate/libretranslate:latest
+    profiles: ["translate"]
+    restart: unless-stopped
+    environment:
+      # Limit downloaded language models to keep startup light (edit as needed).
+      LT_LOAD_ONLY: ${LT_LOAD_ONLY:-en,ja}
+    volumes:
+      - lt_models:/home/libretranslate/.local/share/argos-translate
+    ports:
+      - "${LIBRETRANSLATE_PORT:-5000}:5000"
+
 volumes:
   db_data:
+  lt_models:

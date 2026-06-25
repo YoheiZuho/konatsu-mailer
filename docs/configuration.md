@@ -18,6 +18,24 @@ konatsu の設定は環境変数で行います。Docker Compose では `.env`�
 | `LLM_DEFAULT_BASE_URL` | | `https://api.openai.com/v1` | LLM 接続のフォールバック既定値（DB の `llm_configs` が優先）。 |
 | `LLM_DEFAULT_MODEL` | | `gpt-4o-mini` | 既定モデル名。 |
 | `LLM_DEFAULT_API_KEY` | | （空） | 既定 API キー。 |
+| `LIBRETRANSLATE_URL` | | （空） | メール本文翻訳に使う [LibreTranslate](https://github.com/LibreTranslate/LibreTranslate) のベース URL。空なら翻訳機能は無効（UI のボタンも非表示）。例: `http://libretranslate:5000` |
+| `LIBRETRANSLATE_API_KEY` | | （空） | LibreTranslate の API キー（必要な場合）。サーバー側でのみ付与され、ブラウザには露出しません。 |
+| `TRANSLATE_DEFAULT_TARGET` | | `ja` | 翻訳先のデフォルト言語コード。 |
+
+### 同梱の LibreTranslate を使う（任意）
+
+`docker-compose.yml` には LibreTranslate サービスが `translate` プロファイルで同梱されています（既定では起動しません）。
+
+```bash
+# .env に設定
+LIBRETRANSLATE_URL=http://libretranslate:5000
+LT_LOAD_ONLY=en,ja        # 読み込む言語（少ないほど起動が速い）
+
+# 翻訳エンジン込みで起動
+docker compose --profile translate up --build
+```
+
+外部の LibreTranslate（例 `https://libretranslate.com`）を使う場合は、プロファイルを使わず `LIBRETRANSLATE_URL` と必要に応じて `LIBRETRANSLATE_API_KEY` を設定してください。
 
 > **補足**: `MASTER_ENC_KEY` は実装上「生の文字列バイト列」を鍵として使用し、長さが 32 でなければパディング/切り詰めされます。`openssl rand -hex 16`（= 32 文字 = 32 バイト）が安全かつ確実です。
 

@@ -22,6 +22,7 @@ const LS = {
   brand: 'ui.brand',
   density: 'ui.density',
   ai: 'ui.aiSummaries',
+  translateTarget: 'ui.translateTarget',
 } as const;
 
 function lsGet(key: string): string | null {
@@ -56,10 +57,13 @@ interface AppearanceState {
   brand: string;
   density: Density;
   aiSummaries: boolean;
+  /** Preferred target language for email translation (ISO code). */
+  translateTarget: string;
   setTheme: (t: Theme) => void;
   setBrand: (hex: string) => void;
   setDensity: (d: Density) => void;
   setAiSummaries: (on: boolean) => void;
+  setTranslateTarget: (code: string) => void;
   /** Apply server-stored preferences on login without re-syncing back. */
   hydrateFromServer: (prefs: Partial<Preferences>) => void;
 }
@@ -85,7 +89,10 @@ function syncToServer(get: () => AppearanceState) {
   }, 600);
 }
 
-function readInitial(): Pick<AppearanceState, 'theme' | 'brand' | 'density' | 'aiSummaries'> {
+function readInitial(): Pick<
+  AppearanceState,
+  'theme' | 'brand' | 'density' | 'aiSummaries' | 'translateTarget'
+> {
   const theme = lsGet(LS.theme);
   const density = lsGet(LS.density);
   return {
@@ -93,6 +100,7 @@ function readInitial(): Pick<AppearanceState, 'theme' | 'brand' | 'density' | 'a
     brand: lsGet(LS.brand) ?? DEFAULT_BRAND,
     density: density === 'compact' ? 'compact' : 'comfortable',
     aiSummaries: lsGet(LS.ai) !== 'false',
+    translateTarget: lsGet(LS.translateTarget) ?? 'ja',
   };
 }
 
@@ -119,6 +127,10 @@ export const useAppearance = create<AppearanceState>((set, get) => ({
     set({ aiSummaries: on });
     lsSet(LS.ai, String(on));
     syncToServer(get);
+  },
+  setTranslateTarget: (code) => {
+    set({ translateTarget: code });
+    lsSet(LS.translateTarget, code);
   },
   hydrateFromServer: (prefs) => {
     const next = {

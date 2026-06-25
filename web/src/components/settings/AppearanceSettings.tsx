@@ -2,13 +2,30 @@
 
 import clsx from 'clsx';
 import { useAppearance, BRAND_PRESETS } from '@/stores/appearance';
-import { Field, SegmentedControl, Toggle } from '@/components/common/Form';
+import { useTranslateConfig, useTranslateLanguages, COMMON_TARGETS } from '@/hooks/translate';
+import { Field, Select, SegmentedControl, Toggle } from '@/components/common/Form';
 import { Icon } from '@/components/common/Icon';
 import type { Density, ThemePref } from '@/lib/types';
 
 export function AppearanceSettings() {
-  const { theme, brand, density, aiSummaries, setTheme, setBrand, setDensity, setAiSummaries } =
-    useAppearance();
+  const {
+    theme,
+    brand,
+    density,
+    aiSummaries,
+    translateTarget,
+    setTheme,
+    setBrand,
+    setDensity,
+    setAiSummaries,
+    setTranslateTarget,
+  } = useAppearance();
+
+  const translateConfig = useTranslateConfig();
+  const translationEnabled = translateConfig.data?.enabled ?? false;
+  const languages = useTranslateLanguages(translationEnabled);
+  const targetOptions =
+    languages.data && languages.data.length > 0 ? languages.data : COMMON_TARGETS;
 
   return (
     <div className="flex flex-col gap-7">
@@ -77,6 +94,22 @@ export function AppearanceSettings() {
         </div>
         <Toggle checked={aiSummaries} onChange={setAiSummaries} label="AI要約を表示" />
       </div>
+
+      {translationEnabled && (
+        <Field label="翻訳先の言語" hint="メール本文の「翻訳」で使用する言語です。">
+          <Select
+            value={translateTarget}
+            onChange={(e) => setTranslateTarget(e.target.value)}
+            className="max-w-xs"
+          >
+            {targetOptions.map((l) => (
+              <option key={l.code} value={l.code}>
+                {l.name}（{l.code}）
+              </option>
+            ))}
+          </Select>
+        </Field>
+      )}
     </div>
   );
 }

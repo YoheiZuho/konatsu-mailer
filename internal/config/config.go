@@ -31,6 +31,11 @@ type Config struct {
 	LlmDefaultModel   string
 	LlmDefaultAPIKey  string
 
+	// Translation (LibreTranslate). Empty URL disables the feature.
+	LibreTranslateURL      string
+	LibreTranslateAPIKey   string
+	TranslateDefaultTarget string
+
 	// Timeouts
 	RequestTimeout time.Duration
 }
@@ -81,6 +86,11 @@ func Load() (*Config, error) {
 		LlmDefaultBaseURL:  env("LLM_DEFAULT_BASE_URL", "https://api.openai.com/v1"),
 		LlmDefaultModel:    env("LLM_DEFAULT_MODEL", "gpt-4o-mini"),
 		LlmDefaultAPIKey:   env("LLM_DEFAULT_API_KEY", ""),
+
+		LibreTranslateURL:      env("LIBRETRANSLATE_URL", ""),
+		LibreTranslateAPIKey:   env("LIBRETRANSLATE_API_KEY", ""),
+		TranslateDefaultTarget: env("TRANSLATE_DEFAULT_TARGET", "ja"),
+
 		RequestTimeout:     30 * time.Second,
 	}, nil
 }

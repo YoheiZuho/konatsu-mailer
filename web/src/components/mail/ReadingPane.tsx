@@ -3,6 +3,7 @@
 import clsx from 'clsx';
 import { useThread } from '@/hooks/queries';
 import { useToggleStar, useMarkRead, useReanalyze } from '@/hooks/mutations';
+import { useTranslateConfig } from '@/hooks/translate';
 import { useAppearance } from '@/stores/appearance';
 import { Icon } from '@/components/common/Icon';
 import { LabelChip } from '@/components/common/LabelChip';
@@ -21,6 +22,8 @@ interface ReadingPaneProps {
 export function ReadingPane({ emailId, onBack, showBack, className }: ReadingPaneProps) {
   const aiOn = useAppearance((s) => s.aiSummaries);
   const thread = useThread(emailId);
+  const translateConfig = useTranslateConfig();
+  const translationEnabled = translateConfig.data?.enabled ?? false;
   const toggleStar = useToggleStar();
   const markRead = useMarkRead();
   const reanalyze = useReanalyze();
@@ -111,7 +114,12 @@ export function ReadingPane({ emailId, onBack, showBack, className }: ReadingPan
               <EmptyState icon="mail" title="本文を表示できません" />
             ) : (
               messages.map((m, i) => (
-                <ThreadMessage key={m.id} message={m} defaultCollapsed={i < messages.length - 1} />
+                <ThreadMessage
+                  key={m.id}
+                  message={m}
+                  defaultCollapsed={i < messages.length - 1}
+                  translationEnabled={translationEnabled}
+                />
               ))
             )}
           </div>

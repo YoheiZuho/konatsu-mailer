@@ -47,3 +47,9 @@ export function loadRemoteImages(container: HTMLElement): void {
 export function hasBlockedImages(container: HTMLElement | null): boolean {
   return !!container?.querySelector('img[data-blocked-src]');
 }
+
+/** Extract readable plain text from an HTML string (for translation, etc.). */
+export function htmlToText(html: string): string {
+  const doc = new DOMParser().parseFromString(html, 'text/html');
+  return (doc.body.textContent ?? '').replace(/\n{3,}/g, '\n\n').trim();
+}

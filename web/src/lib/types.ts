@@ -171,6 +171,24 @@ export interface LLMTestResult {
 export type ThemePref = 'system' | 'light' | 'dark';
 export type Density = 'comfortable' | 'compact';
 
+// --- Translation (LibreTranslate) ---
+
+export interface TranslateConfig {
+  enabled: boolean;
+  default_target: string;
+}
+
+export interface TranslateLanguage {
+  code: string;
+  name: string;
+}
+
+export interface TranslateResult {
+  translated_text: string;
+  target: string;
+  detected_source?: string;
+}
+
 export interface Preferences {
   theme: ThemePref;
   brand_color: string;

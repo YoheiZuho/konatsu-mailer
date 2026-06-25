@@ -57,6 +57,10 @@ func NewRouter(cfg *config.Config, db *store.DB) *gin.Engine {
 
 			auth.POST("/ai/draft", draftHandler(db, cfg))
 
+			auth.GET("/translate/config", translateConfigHandler(cfg))
+			auth.GET("/translate/languages", translateLanguagesHandler(cfg))
+			auth.POST("/translate", translateHandler(cfg))
+
 			auth.POST("/push/subscribe", subscribePushHandler(db, cfg))
 			auth.GET("/push/vapid-public-key", vapidPublicKeyHandler(cfg))
 
