@@ -48,6 +48,7 @@ export function useMarkRead() {
       patchEmailInLists(qc, id, { is_read });
     },
     onError: (_e, { id, is_read }) => patchEmailInLists(qc, id, { is_read: !is_read }),
+    onSettled: () => qc.invalidateQueries({ queryKey: ['folders'] }),
   });
 }
 

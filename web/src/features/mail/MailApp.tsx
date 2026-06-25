@@ -95,10 +95,10 @@ export function MailApp() {
       {/* Mobile sidebar drawer */}
       {!isWide && sidebarOpen && (
         <div className="fixed inset-0 z-40 flex">
-          <div className="w-[260px] max-w-[80%] overflow-y-auto bg-surface shadow-compose">
+          <div className="animate-slide-in-left w-[260px] max-w-[80%] overflow-y-auto bg-surface shadow-compose">
             <Sidebar />
           </div>
-          <div className="flex-1 bg-black/40" onClick={() => setSidebarOpen(false)} aria-hidden="true" />
+          <div className="animate-fade-in flex-1 bg-black/40" onClick={() => setSidebarOpen(false)} aria-hidden="true" />
         </div>
       )}
 

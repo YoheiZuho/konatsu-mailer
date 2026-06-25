@@ -34,7 +34,13 @@ func (db *DB) UpsertEmail(ctx context.Context, e *domain.Email) (domain.UUID, bo
 		    has_attachment, date_sent, is_read)
 		 VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14)
 		 ON CONFLICT (account_id, folder, imap_uid) DO UPDATE
-		   SET is_read = EXCLUDED.is_read
+		   SET is_read = EXCLUDED.is_read,
+		       subject = EXCLUDED.subject,
+		       sender_name = EXCLUDED.sender_name,
+		       sender_addr = EXCLUDED.sender_addr,
+		       recipients = EXCLUDED.recipients,
+		       body_preview = EXCLUDED.body_preview,
+		       has_attachment = EXCLUDED.has_attachment
 		 RETURNING id, (xmax = 0) AS inserted`,
 		e.AccountID, e.ThreadID, e.Folder, e.IMAPUID, e.MessageID, e.InReplyTo,
 		e.Subject, e.SenderName, e.SenderAddr, e.Recipients, e.BodyPreview,
@@ -109,6 +115,40 @@ func (db *DB) ThreadEmailsForUser(ctx context.Context, threadID domain.UUID, use
 		out = append(out, e)
 	}
 	return out, rows.Err()
+}
+
+// UnreadCounts returns unread message counts per folder for a user, plus the
+// unread counts for the virtual starred and important views.
+func (db *DB) UnreadCounts(ctx context.Context, userID string) (perFolder map[string]int, starred, important int, err error) {
+	perFolder = map[string]int{}
+	rows, err := db.Pool.Query(ctx,
+		`SELECT e.folder, count(*)
+		 FROM emails e JOIN accounts a ON a.id = e.account_id
+		 WHERE a.user_id = $1 AND e.is_read = false
+		 GROUP BY e.folder`, userID)
+	if err != nil {
+		return nil, 0, 0, err
+	}
+	defer rows.Close()
+	for rows.Next() {
+		var folder string
+		var n int
+		if err := rows.Scan(&folder, &n); err != nil {
+			return nil, 0, 0, err
+		}
+		perFolder[folder] = n
+	}
+	if err := rows.Err(); err != nil {
+		return nil, 0, 0, err
+	}
+
+	_ = db.Pool.QueryRow(ctx,
+		`SELECT count(*) FROM emails e JOIN accounts a ON a.id = e.account_id
+		 WHERE a.user_id = $1 AND e.is_read = false AND e.is_starred = true`, userID).Scan(&starred)
+	_ = db.Pool.QueryRow(ctx,
+		`SELECT count(*) FROM emails e JOIN accounts a ON a.id = e.account_id
+		 WHERE a.user_id = $1 AND e.is_read = false AND e.ai_priority >= 4`, userID).Scan(&important)
+	return perFolder, starred, important, nil
 }
 
 // SetReadForUser toggles the read flag for an owned email.

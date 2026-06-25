@@ -14,9 +14,9 @@ import type {
   Account,
   EmailListItem,
   EmailListResponse,
+  FoldersResponse,
   Label,
   LLMConfig,
-  MailFolder,
   Preferences,
   ThreadDetail,
 } from '@/lib/types';
@@ -102,8 +102,8 @@ export function useThread(id: string | null) {
 export function useFolders() {
   return useQuery({
     queryKey: queryKeys.folders,
-    queryFn: () => api.get<{ items: MailFolder[] }>('/folders').then((r) => r.items ?? []),
-    staleTime: 60_000,
+    queryFn: () => api.get<FoldersResponse>('/folders'),
+    staleTime: 30_000,
   });
 }
 

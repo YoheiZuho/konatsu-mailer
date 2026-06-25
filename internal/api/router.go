@@ -34,7 +34,7 @@ func NewRouter(cfg *config.Config, db *store.DB, hub *ws.Hub) *gin.Engine {
 			auth.GET("/emails", listEmailsHandler(db))
 			auth.GET("/emails/:id", getEmailHandler(db, cfg))
 			auth.POST("/emails/send", sendEmailHandler(db, cfg))
-			auth.PATCH("/emails/:id/read", patchReadHandler(db))
+			auth.PATCH("/emails/:id/read", patchReadHandler(db, cfg))
 			auth.PATCH("/emails/:id/star", patchStarHandler(db))
 			auth.POST("/emails/:id/labels", assignLabelsHandler(db))
 			auth.POST("/emails/:id/reanalyze", reanalyzeHandler(db, cfg))

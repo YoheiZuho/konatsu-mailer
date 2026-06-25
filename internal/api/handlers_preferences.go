@@ -46,12 +46,28 @@ func preferencesResponse(theme, brand string, prefs map[string]any) gin.H {
 			}
 		}
 	}
+	signature, _ := prefs["signature"].(string)
+
+	pushLabels := []string{}
+	switch v := prefs["push_labels"].(type) {
+	case []any:
+		for _, x := range v {
+			if s, ok := x.(string); ok {
+				pushLabels = append(pushLabels, s)
+			}
+		}
+	case []string:
+		pushLabels = v
+	}
+
 	return gin.H{
 		"theme":        theme,
 		"brand_color":  brand,
 		"density":      density,
 		"ai_summaries": aiSummaries,
 		"ai_filters":   aiFilters,
+		"signature":    signature,
+		"push_labels":  pushLabels,
 	}
 }
 
@@ -89,11 +105,13 @@ func getPreferencesHandler(db *store.DB) gin.HandlerFunc {
 }
 
 type prefsPatch struct {
-	Theme       *string          `json:"theme"`
-	BrandColor  *string          `json:"brand_color"`
-	Density     *string          `json:"density"`
-	AISummaries *bool            `json:"ai_summaries"`
-	AIFilters   map[string]bool  `json:"ai_filters"`
+	Theme       *string         `json:"theme"`
+	BrandColor  *string         `json:"brand_color"`
+	Density     *string         `json:"density"`
+	AISummaries *bool           `json:"ai_summaries"`
+	AIFilters   map[string]bool `json:"ai_filters"`
+	Signature   *string         `json:"signature"`
+	PushLabels  *[]string       `json:"push_labels"`
 }
 
 func patchPreferencesHandler(db *store.DB) gin.HandlerFunc {
@@ -125,6 +143,12 @@ func patchPreferencesHandler(db *store.DB) gin.HandlerFunc {
 		}
 		if p.AIFilters != nil {
 			prefs["ai_filters"] = p.AIFilters
+		}
+		if p.Signature != nil {
+			prefs["signature"] = *p.Signature
+		}
+		if p.PushLabels != nil {
+			prefs["push_labels"] = *p.PushLabels
 		}
 
 		newPrefs, _ := json.Marshal(prefs)

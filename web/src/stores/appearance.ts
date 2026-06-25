@@ -34,6 +34,8 @@ const LS = {
   sidebarWidth: 'ui.sidebarWidth',
   listWidth: 'ui.listWidth',
   aiFilters: 'ui.aiFilters',
+  signature: 'ui.signature',
+  pushLabels: 'ui.pushLabels',
 } as const;
 
 function readAiFilters(): AiFilters {
@@ -91,6 +93,10 @@ interface AppearanceState {
   translateTarget: string;
   /** Per-category AI analysis filters (true = skip AI summary). */
   aiFilters: AiFilters;
+  /** Signature appended to composed mail. */
+  signature: string;
+  /** Label names that trigger a push notification (empty = all important mail). */
+  pushLabels: string[];
   /** Resizable pane widths (px). */
   sidebarWidth: number;
   listWidth: number;
@@ -99,6 +105,8 @@ interface AppearanceState {
   setDensity: (d: Density) => void;
   setAiSummaries: (on: boolean) => void;
   setAiFilters: (f: AiFilters) => void;
+  setSignature: (s: string) => void;
+  setPushLabels: (labels: string[]) => void;
   setTranslateTarget: (code: string) => void;
   setSidebarWidth: (w: number) => void;
   setListWidth: (w: number) => void;
@@ -121,6 +129,8 @@ function syncToServer(get: () => AppearanceState) {
         density: s.density,
         ai_summaries: s.aiSummaries,
         ai_filters: s.aiFilters,
+        signature: s.signature,
+        push_labels: s.pushLabels,
       })
       .catch(() => {
         /* preferences are non-critical; ignore transient failures */
@@ -130,16 +140,25 @@ function syncToServer(get: () => AppearanceState) {
 
 function readInitial(): Pick<
   AppearanceState,
-  'theme' | 'brand' | 'density' | 'aiSummaries' | 'aiFilters' | 'translateTarget' | 'sidebarWidth' | 'listWidth'
+  | 'theme' | 'brand' | 'density' | 'aiSummaries' | 'aiFilters' | 'signature' | 'pushLabels' | 'translateTarget' | 'sidebarWidth' | 'listWidth'
 > {
   const theme = lsGet(LS.theme);
   const density = lsGet(LS.density);
+  let pushLabels: string[] = [];
+  try {
+    const raw = lsGet(LS.pushLabels);
+    if (raw) pushLabels = JSON.parse(raw) as string[];
+  } catch {
+    pushLabels = [];
+  }
   return {
     theme: theme === 'light' || theme === 'dark' || theme === 'system' ? theme : 'system',
     brand: lsGet(LS.brand) ?? DEFAULT_BRAND,
     density: density === 'compact' ? 'compact' : 'comfortable',
     aiSummaries: lsGet(LS.ai) !== 'false',
     aiFilters: readAiFilters(),
+    signature: lsGet(LS.signature) ?? '',
+    pushLabels,
     translateTarget: lsGet(LS.translateTarget) ?? 'ja',
     sidebarWidth: clampNum(lsGet(LS.sidebarWidth), SIDEBAR_WIDTH.default, SIDEBAR_WIDTH.min, SIDEBAR_WIDTH.max),
     listWidth: clampNum(lsGet(LS.listWidth), LIST_WIDTH.default, LIST_WIDTH.min, LIST_WIDTH.max),
@@ -175,6 +194,16 @@ export const useAppearance = create<AppearanceState>((set, get) => ({
     lsSet(LS.aiFilters, JSON.stringify(f));
     syncToServer(get);
   },
+  setSignature: (s) => {
+    set({ signature: s });
+    lsSet(LS.signature, s);
+    syncToServer(get);
+  },
+  setPushLabels: (labels) => {
+    set({ pushLabels: labels });
+    lsSet(LS.pushLabels, JSON.stringify(labels));
+    syncToServer(get);
+  },
   setTranslateTarget: (code) => {
     set({ translateTarget: code });
     lsSet(LS.translateTarget, code);
@@ -199,6 +228,8 @@ export const useAppearance = create<AppearanceState>((set, get) => ({
       density: prefs.density ?? get().density,
       aiSummaries: prefs.ai_summaries ?? get().aiSummaries,
       aiFilters,
+      signature: prefs.signature ?? get().signature,
+      pushLabels: prefs.push_labels ?? get().pushLabels,
     };
     set(next);
     lsSet(LS.theme, next.theme);
@@ -206,6 +237,8 @@ export const useAppearance = create<AppearanceState>((set, get) => ({
     lsSet(LS.density, next.density);
     lsSet(LS.ai, String(next.aiSummaries));
     lsSet(LS.aiFilters, JSON.stringify(next.aiFilters));
+    lsSet(LS.signature, next.signature);
+    lsSet(LS.pushLabels, JSON.stringify(next.pushLabels));
     applyTheme(next.theme);
     applyBrand(next.brand);
   },

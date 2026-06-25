@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 
+import { useEffect } from 'react';
 import clsx from 'clsx';
 import { useThread } from '@/hooks/queries';
 import { useToggleStar, useMarkRead } from '@/hooks/mutations';
@@ -11,6 +12,7 @@ import { LabelChip } from '@/components/common/LabelChip';
 import { CenteredSpinner, EmptyState, InlineError } from '@/components/common/Feedback';
 import { AiSummaryCard } from '@/components/mail/AiSummaryCard';
 import { ThreadMessage } from '@/components/mail/ThreadMessage';
+import { signatureHtml, quoteHtml } from '@/lib/compose';
 
 interface ReadingPaneProps {
   emailId: string | null;
@@ -21,11 +23,22 @@ interface ReadingPaneProps {
 
 export function ReadingPane({ emailId, onBack, showBack, className }: ReadingPaneProps) {
   const aiOn = useAppearance((s) => s.aiSummaries);
+  const signature = useAppearance((s) => s.signature);
   const thread = useThread(emailId);
   const toggleStar = useToggleStar();
   const markRead = useMarkRead();
   const openCompose = useUI((s) => s.openCompose);
   const translationEnabled = useTranslateConfig().data?.enabled ?? false;
+
+  // Escape closes the preview (returns to the full-width list).
+  useEffect(() => {
+    if (!emailId) return;
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') onBack();
+    };
+    document.addEventListener('keydown', onKey);
+    return () => document.removeEventListener('keydown', onKey);
+  }, [emailId, onBack]);
 
   if (!emailId) {
     return (
@@ -54,15 +67,15 @@ export function ReadingPane({ emailId, onBack, showBack, className }: ReadingPan
       subject: subject.startsWith('Re:') ? subject : `Re: ${subject}`,
       inReplyTo: last.id,
       threadId: data?.thread_id,
+      body: signatureHtml(signature) + quoteHtml(last),
     });
   };
 
   const startForward = () => {
-    const original = last?.text || '';
     openCompose({
       mode: 'forward',
       subject: subject.startsWith('Fwd:') ? subject : `Fwd: ${subject}`,
-      body: original ? `\n\n---------- 転送メッセージ ----------\n${original}` : '',
+      body: signatureHtml(signature) + (last ? quoteHtml(last) : ''),
     });
   };
 
@@ -70,11 +83,10 @@ export function ReadingPane({ emailId, onBack, showBack, className }: ReadingPan
     <section className={clsx('flex flex-col bg-bg', className)}>
       {/* Toolbar (design 案B) */}
       <div className="flex h-12 flex-none items-center gap-1 border-b border-line px-3">
-        {showBack && (
-          <button className="icon-btn-sm" onClick={onBack} aria-label="一覧へ戻る">
-            <Icon name="arrow_back" size={21} />
-          </button>
-        )}
+        <button className="icon-btn-sm" onClick={onBack} aria-label={showBack ? '一覧へ戻る' : 'プレビューを閉じる'} title="閉じる（一覧へ）">
+          <Icon name={showBack ? 'arrow_back' : 'close'} size={21} />
+        </button>
+        <div className="mx-1 h-[22px] w-px bg-line" />
         <ToolbarButton icon="archive" label="アーカイブ" disabled />
         <ToolbarButton icon="report" label="迷惑メール報告" disabled />
         <ToolbarButton icon="delete" label="削除" disabled />
@@ -91,7 +103,7 @@ export function ReadingPane({ emailId, onBack, showBack, className }: ReadingPan
       </div>
 
       {/* Body */}
-      <div className="min-h-0 flex-1 overflow-y-auto px-5 py-6 sm:px-7">
+      <div key={emailId} className="animate-fade-in min-h-0 flex-1 overflow-y-auto px-5 py-6 sm:px-7">
         {thread.isLoading ? (
           <CenteredSpinner />
         ) : thread.isError ? (

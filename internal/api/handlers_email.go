@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"log/slog"
 	"net/http"
 	"strconv"
 	"strings"
@@ -231,9 +232,11 @@ func fetchThreadBodies(ctx context.Context, db *store.DB, cfg *config.Config, me
 	return result
 }
 
-func patchReadHandler(db *store.DB) gin.HandlerFunc {
+func patchReadHandler(db *store.DB, cfg *config.Config) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		userID := c.GetString("userID")
+		id := c.Param("id")
+		ctx := c.Request.Context()
 		var body struct {
 			IsRead bool `json:"is_read"`
 		}
@@ -241,12 +244,42 @@ func patchReadHandler(db *store.DB) gin.HandlerFunc {
 			c.JSON(http.StatusBadRequest, errorResponse("validation_error", err.Error()))
 			return
 		}
-		if err := db.SetReadForUser(c.Request.Context(), c.Param("id"), userID, body.IsRead); err != nil {
+		if err := db.SetReadForUser(ctx, id, userID, body.IsRead); err != nil {
 			c.JSON(http.StatusInternalServerError, errorResponse("internal_error", "failed to update"))
 			return
 		}
+		// Propagate the \Seen flag to IMAP in the background (best-effort) so app
+		// and server read-state stay in sync.
+		propagateSeen(db, cfg, userID, id, body.IsRead)
 		c.JSON(http.StatusOK, gin.H{"is_read": body.IsRead})
 	}
+}
+
+// propagateSeen mirrors a read/unread change to the IMAP server asynchronously.
+func propagateSeen(db *store.DB, cfg *config.Config, userID, emailID string, seen bool) {
+	rec, err := db.GetEmailForUser(context.Background(), emailID, userID)
+	if err != nil {
+		return
+	}
+	account, err := db.GetAccount(context.Background(), string(rec.AccountID))
+	if err != nil {
+		return
+	}
+	enc, err := crypto.NewAES256GCM(cfg.MasterEncKey)
+	if err != nil {
+		return
+	}
+	password, err := enc.Decrypt(account.PasswordEncrypted)
+	if err != nil {
+		return
+	}
+	go func() {
+		ctx, cancel := context.WithTimeout(context.Background(), 20*time.Second)
+		defer cancel()
+		if err := imapsync.SetSeen(ctx, account, string(password), rec.Folder, rec.IMAPUID, seen); err != nil {
+			slog.Warn("imap seen propagation failed", slog.String("email", emailID), slog.Any("error", err))
+		}
+	}()
 }
 
 func patchStarHandler(db *store.DB) gin.HandlerFunc {

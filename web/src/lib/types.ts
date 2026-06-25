@@ -184,6 +184,13 @@ export type FolderRole = 'inbox' | 'sent' | 'drafts' | 'junk' | 'trash' | 'archi
 export interface MailFolder {
   name: string;
   role: FolderRole;
+  unread?: number;
+}
+
+export interface FoldersResponse {
+  items: MailFolder[];
+  starred_unread: number;
+  important_unread: number;
 }
 
 // --- Translation (LibreTranslate) ---
@@ -210,6 +217,8 @@ export interface Preferences {
   density: Density;
   ai_summaries: boolean;
   ai_filters?: AiFilters;
+  signature?: string;
+  push_labels?: string[];
 }
 
 export interface SendEmailInput {

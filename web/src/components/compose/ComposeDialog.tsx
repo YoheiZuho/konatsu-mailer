@@ -1,25 +1,44 @@
 // SPDX-License-Identifier: Apache-2.0
 
-import { useRef, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { useUI } from '@/stores/ui';
+import { useAppearance } from '@/stores/appearance';
 import { useSendEmail } from '@/hooks/mutations';
 import { streamDraft } from '@/lib/ai';
 import { parseAddressList } from '@/lib/email';
+import { signatureHtml, textToHtml } from '@/lib/compose';
+import { htmlToText } from '@/lib/sanitize';
 import { ApiRequestError } from '@/lib/api';
 import { Icon } from '@/components/common/Icon';
 import { Spinner, InlineError } from '@/components/common/Feedback';
+import { RichTextEditor } from '@/components/compose/RichTextEditor';
 
-/** Full compose window (design doc §9.3 ComposeDialog). */
+/**
+ * Compose window. On desktop it's a docked, non-modal window so the mail behind
+ * it stays interactive; on mobile it's full screen.
+ */
 export function ComposeDialog() {
   const compose = useUI((s) => s.compose);
   const update = useUI((s) => s.updateCompose);
   const close = useUI((s) => s.closeCompose);
+  const signature = useAppearance((s) => s.signature);
   const send = useSendEmail();
 
   const [showCc, setShowCc] = useState(!!compose.cc || !!compose.bcc);
   const [drafting, setDrafting] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const abortRef = useRef<AbortController | null>(null);
+  const draftTextRef = useRef('');
+  const initedRef = useRef(false);
+
+  // Seed a new (non-reply) message with the signature once on open.
+  useEffect(() => {
+    if (initedRef.current) return;
+    initedRef.current = true;
+    if (!compose.body && signature.trim()) {
+      update({ body: signatureHtml(signature) });
+    }
+  }, [compose.body, signature, update]);
 
   const generateDraft = async () => {
     if (drafting) {
@@ -29,6 +48,8 @@ export function ComposeDialog() {
     }
     setError(null);
     setDrafting(true);
+    draftTextRef.current = '';
+    const sig = signature.trim() ? signatureHtml(signature) : '';
     update({ body: '' });
     const controller = new AbortController();
     abortRef.current = controller;
@@ -38,11 +59,13 @@ export function ComposeDialog() {
         thread_id: compose.threadId,
         email_id: compose.inReplyTo,
         instruction: compose.subject,
-        context: compose.body,
       },
       {
         signal: controller.signal,
-        onChunk: (text) => update({ body: (useUI.getState().compose.body ?? '') + text }),
+        onChunk: (text) => {
+          draftTextRef.current += text;
+          update({ body: textToHtml(draftTextRef.current) + sig });
+        },
         onDone: () => setDrafting(false),
         onError: (e) => {
           setError(e.message);
@@ -65,34 +88,32 @@ export function ComposeDialog() {
         cc: parseAddressList(compose.cc),
         bcc: parseAddressList(compose.bcc),
         subject: compose.subject,
-        text: compose.body,
+        text: htmlToText(compose.body),
+        html: compose.body,
         in_reply_to: compose.inReplyTo,
         thread_id: compose.threadId,
       },
       {
         onSuccess: () => close(),
-        onError: (e) =>
-          setError(e instanceof ApiRequestError ? e.message : '送信に失敗しました。'),
+        onError: (e) => setError(e instanceof ApiRequestError ? e.message : '送信に失敗しました。'),
       },
     );
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-end justify-center p-0 sm:items-end sm:justify-end sm:p-6">
-      {/* Backdrop only on mobile (full screen); desktop is a docked window. */}
-      <div className="absolute inset-0 bg-black/30 sm:hidden" onClick={close} />
-      <div className="relative flex h-full w-full flex-col overflow-hidden bg-surface shadow-compose sm:h-[620px] sm:w-[560px] sm:rounded-xl">
-        {/* Header */}
+    // pointer-events-none lets clicks pass through to the mail behind on desktop.
+    <div className="pointer-events-none fixed inset-0 z-50 flex items-end justify-center sm:justify-end sm:p-6">
+      <div className="pointer-events-auto absolute inset-0 bg-black/30 sm:hidden" onClick={close} />
+      <div className="animate-compose-in pointer-events-auto relative flex h-full w-full flex-col overflow-hidden bg-surface shadow-compose sm:h-[620px] sm:w-[560px] sm:rounded-xl">
         <div className="flex h-12 flex-none items-center gap-2 border-b border-line bg-surface-sub px-4">
           <span className="flex-1 text-[14px] font-semibold text-content">
-            {compose.mode === 'compose' ? '新規メッセージ' : '返信'}
+            {compose.mode === 'reply' ? '返信' : compose.mode === 'forward' ? '転送' : '新規メッセージ'}
           </span>
           <button className="icon-btn-sm" onClick={close} aria-label="閉じる">
             <Icon name="close" size={20} />
           </button>
         </div>
 
-        {/* Recipients */}
         <div className="flex items-center gap-2 border-b border-line px-4" style={{ height: 46 }}>
           <span className="w-9 flex-none text-[13px] text-content-sub">宛先</span>
           <input
@@ -103,10 +124,7 @@ export function ComposeDialog() {
             autoFocus
           />
           {!showCc && (
-            <button
-              className="text-[13px] text-content-sub hover:text-content"
-              onClick={() => setShowCc(true)}
-            >
+            <button className="text-[13px] text-content-sub hover:text-content" onClick={() => setShowCc(true)}>
               Cc / Bcc
             </button>
           )}
@@ -118,7 +136,6 @@ export function ComposeDialog() {
           </>
         )}
 
-        {/* Subject */}
         <div className="flex items-center border-b border-line px-4" style={{ height: 46 }}>
           <input
             value={compose.subject}
@@ -128,11 +145,10 @@ export function ComposeDialog() {
           />
         </div>
 
-        {/* Body */}
-        <div className="relative min-h-0 flex-1">
+        <div className="flex items-center justify-end border-b border-line px-3 py-1.5">
           <button
             onClick={generateDraft}
-            className="absolute right-4 top-3.5 z-10 flex h-8 items-center gap-1.5 rounded-2xl border px-3 text-[12.5px] font-semibold transition"
+            className="flex h-8 items-center gap-1.5 rounded-2xl border px-3 text-[12.5px] font-semibold transition-colors"
             style={{
               borderColor: 'color-mix(in srgb, var(--brand) 35%, transparent)',
               background: 'var(--brand-weak)',
@@ -140,28 +156,28 @@ export function ComposeDialog() {
             }}
           >
             {drafting ? <Spinner size={15} /> : <Icon name="auto_awesome" size={17} className="text-brand" />}
-            {drafting ? '生成中…' : 'AIで下書きを生成'}
+            {drafting ? '生成中…（停止）' : 'AIで下書きを生成'}
           </button>
-          <textarea
-            value={compose.body}
-            onChange={(e) => update({ body: e.target.value })}
-            className="h-full w-full resize-none bg-transparent px-4 pb-4 pt-14 text-[14.5px] leading-relaxed text-content outline-none"
-            placeholder="本文を入力…"
-          />
         </div>
 
+        <RichTextEditor
+          value={compose.body}
+          onChange={(html) => update({ body: html })}
+          placeholder="本文を入力…"
+          className="flex min-h-0 flex-1 flex-col"
+        />
+
         {error && (
-          <div className="px-4 pb-2">
+          <div className="px-4 pb-2 pt-2">
             <InlineError message={error} />
           </div>
         )}
 
-        {/* Footer */}
         <div className="flex flex-none items-center gap-2 border-t border-line px-4 py-3">
           <button
             onClick={handleSend}
             disabled={send.isPending}
-            className="flex h-10 items-center gap-2 rounded-full bg-brand pl-6 pr-3 text-[14.5px] font-semibold transition hover:bg-brand-strong disabled:opacity-60"
+            className="flex h-10 items-center gap-2 rounded-full bg-brand pl-6 pr-3 text-[14.5px] font-semibold transition-all hover:bg-brand-strong active:scale-[0.98] disabled:opacity-60"
             style={{ color: 'var(--on-brand)' }}
           >
             {send.isPending ? <Spinner size={18} /> : null}

@@ -2,15 +2,28 @@
 
 import { useState } from 'react';
 import { subscribeToPush, notificationPermission } from '@/lib/push';
-import { Button } from '@/components/common/Form';
+import { useAppearance } from '@/stores/appearance';
+import { useLabels } from '@/hooks/queries';
+import { Button, Field } from '@/components/common/Form';
 import { Icon } from '@/components/common/Icon';
 import { InlineError } from '@/components/common/Feedback';
+import { labelChipColors } from '@/lib/colors';
 
 export function NotificationSettings() {
   const [permission, setPermission] = useState(notificationPermission());
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [done, setDone] = useState(false);
+
+  const pushLabels = useAppearance((s) => s.pushLabels);
+  const setPushLabels = useAppearance((s) => s.setPushLabels);
+  const { data: labels } = useLabels();
+
+  const toggleLabel = (name: string) => {
+    setPushLabels(
+      pushLabels.includes(name) ? pushLabels.filter((l) => l !== name) : [...pushLabels, name],
+    );
+  };
 
   const enable = async () => {
     setBusy(true);
@@ -58,6 +71,39 @@ export function NotificationSettings() {
       </div>
 
       {error && <InlineError message={error} />}
+
+      <Field
+        label="通知するラベル"
+        hint="選択したラベルが付いたメールのみ通知します。未選択の場合は重要度が高いメール全般を通知します。"
+      >
+        {(labels ?? []).length === 0 ? (
+          <p className="text-[12.5px] text-content-sub">ラベルがまだありません。</p>
+        ) : (
+          <div className="flex flex-wrap gap-2">
+            {(labels ?? []).map((l) => {
+              const active = pushLabels.includes(l.name);
+              const { bg, fg } = labelChipColors(l.color);
+              return (
+                <button
+                  key={l.id ?? l.name}
+                  type="button"
+                  onClick={() => toggleLabel(l.name)}
+                  className="flex items-center gap-1.5 rounded-full border px-3 py-1.5 text-[12.5px] font-semibold transition-colors"
+                  style={
+                    active
+                      ? { background: bg, color: fg, borderColor: 'transparent' }
+                      : { borderColor: 'var(--line)', color: 'var(--text-sub)' }
+                  }
+                  aria-pressed={active}
+                >
+                  {active && <Icon name="check" size={14} />}
+                  {l.name}
+                </button>
+              );
+            })}
+          </div>
+        )}
+      </Field>
     </div>
   );
 }

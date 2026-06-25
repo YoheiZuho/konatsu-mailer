@@ -35,7 +35,7 @@ export function Modal({ open, onClose, children, widthClass = 'max-w-2xl', label
 
   return (
     <div
-      className="fixed inset-0 z-50 flex items-start justify-center overflow-y-auto bg-black/40 p-4 sm:items-center sm:p-6"
+      className="animate-fade-in fixed inset-0 z-50 flex items-start justify-center overflow-y-auto bg-black/40 p-4 sm:items-center sm:p-6"
       onMouseDown={(e) => {
         if (e.target === e.currentTarget) onClose();
       }}
@@ -47,7 +47,7 @@ export function Modal({ open, onClose, children, widthClass = 'max-w-2xl', label
         aria-labelledby={labelledBy}
         tabIndex={-1}
         className={clsx(
-          'my-auto w-full overflow-hidden rounded-xl bg-surface shadow-compose outline-none',
+          'animate-scale-in my-auto w-full overflow-hidden rounded-xl bg-surface shadow-compose outline-none',
           widthClass,
         )}
       >

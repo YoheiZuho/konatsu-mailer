@@ -7,12 +7,14 @@ import (
 	"context"
 	"fmt"
 	"log/slog"
+	"mime"
 	"strings"
 	"time"
 	"unicode/utf8"
 
 	"github.com/emersion/go-imap/v2"
 	"github.com/emersion/go-imap/v2/imapclient"
+	gocharset "github.com/emersion/go-message/charset"
 
 	"github.com/yoheizuho/konatsu-mailer/internal/config"
 	"github.com/yoheizuho/konatsu-mailer/internal/crypto"
@@ -177,13 +179,22 @@ func (m *SyncManager) session(ctx context.Context, a domain.Account) error {
 	}
 }
 
+// clientOptions configures the IMAP client with a charset-aware RFC 2047
+// word decoder so non-UTF-8 headers (e.g. ISO-2022-JP subjects) decode instead
+// of appearing as "=?ISO-2022-JP?B?...?=".
+func clientOptions() *imapclient.Options {
+	return &imapclient.Options{
+		WordDecoder: &mime.WordDecoder{CharsetReader: gocharset.Reader},
+	}
+}
+
 // dial opens an IMAP connection using implicit TLS or STARTTLS per the account.
 func dial(a domain.Account) (*imapclient.Client, error) {
 	addr := fmt.Sprintf("%s:%d", a.IMAPHost, a.IMAPPort)
 	if a.IMAPUseTLS {
-		return imapclient.DialTLS(addr, nil)
+		return imapclient.DialTLS(addr, clientOptions())
 	}
-	return imapclient.DialStartTLS(addr, nil)
+	return imapclient.DialStartTLS(addr, clientOptions())
 }
 
 // syncFolder fetches the newest messages from a folder and upserts them. The

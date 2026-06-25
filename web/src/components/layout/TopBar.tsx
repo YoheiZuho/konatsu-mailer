@@ -145,7 +145,7 @@ function AccountMenu() {
       {open && (
         <div
           role="menu"
-          className="absolute right-0 top-[42px] z-50 w-60 overflow-hidden rounded-xl border border-line bg-surface py-1 shadow-compose"
+          className="animate-scale-in absolute right-0 top-[42px] z-50 w-60 origin-top-right overflow-hidden rounded-xl border border-line bg-surface py-1 shadow-compose"
         >
           {email && (
             <div className="truncate px-4 py-2 text-[12.5px] text-content-sub" title={email}>

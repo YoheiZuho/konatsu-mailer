@@ -14,12 +14,14 @@ export function AppearanceSettings() {
     density,
     aiSummaries,
     aiFilters,
+    signature,
     translateTarget,
     setTheme,
     setBrand,
     setDensity,
     setAiSummaries,
     setAiFilters,
+    setSignature,
     setTranslateTarget,
   } = useAppearance();
 
@@ -118,6 +120,16 @@ export function AppearanceSettings() {
             </label>
           ))}
         </div>
+      </Field>
+
+      <Field label="署名" hint="新規メール・返信の本文末尾に自動で挿入されます。">
+        <textarea
+          value={signature}
+          onChange={(e) => setSignature(e.target.value)}
+          rows={3}
+          placeholder={'例：\n山田 太郎\nyamada@example.com'}
+          className="rounded-lg border border-line bg-surface px-3 py-2 text-[14px] leading-relaxed text-content outline-none transition-colors focus:border-brand focus:ring-2 focus:ring-brand/30"
+        />
       </Field>
 
       {translationEnabled && (
