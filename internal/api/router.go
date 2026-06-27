@@ -31,6 +31,11 @@ func NewRouter(cfg *config.Config, db *store.DB, hub *ws.Hub) *gin.Engine {
 		{
 			auth.GET("/folders", listFoldersHandler(db))
 
+			auth.GET("/filters", listFiltersHandler(db))
+			auth.POST("/filters", createFilterHandler(db))
+			auth.PATCH("/filters/:id", updateFilterHandler(db))
+			auth.DELETE("/filters/:id", deleteFilterHandler(db))
+
 			auth.GET("/emails", listEmailsHandler(db))
 			auth.GET("/emails/:id", getEmailHandler(db, cfg))
 			auth.POST("/emails/send", sendEmailHandler(db, cfg))

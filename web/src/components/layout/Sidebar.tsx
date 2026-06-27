@@ -57,7 +57,7 @@ export function Sidebar({ width }: { width?: number }) {
         label="受信トレイ"
         count={inbox?.unread}
         active={folderActive(inbox?.name ?? 'INBOX')}
-        onClick={() => setFolder(inbox?.name ?? 'INBOX')}
+        onClick={() => setFolder(inbox?.name ?? 'INBOX', true)}
       />
       <Item
         icon="star"

@@ -24,6 +24,7 @@ import type {
 export interface EmailFilter {
   folder: string;
   view: MailView;
+  category: string | null;
   label: string | null;
   q: string;
   unread: boolean;
@@ -49,6 +50,7 @@ function buildEmailQuery(f: EmailFilter, cursor?: string | null): string {
     params.set('important', 'true');
   } else {
     params.set('folder', f.folder);
+    if (f.category) params.set('category', f.category);
   }
   if (f.q.trim()) params.set('q', f.q.trim());
   if (f.unread) params.set('unread', 'true');
@@ -63,6 +65,7 @@ export function useEmails() {
     useShallow((s) => ({
       folder: s.folder,
       view: s.view,
+      category: s.category,
       label: s.labelFilter,
       q: s.search,
       unread: s.unreadOnly,

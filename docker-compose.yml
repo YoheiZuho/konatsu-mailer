@@ -1,5 +1,7 @@
 services:
   db:
+    # Pin the major version. Changing it (e.g. 17→18) makes the existing data
+    # directory incompatible and is a common cause of apparent "data resets".
     image: postgres:17-alpine
     restart: unless-stopped
     environment:
@@ -7,7 +9,9 @@ services:
       POSTGRES_PASSWORD: konatsu
       POSTGRES_DB: konatsu
     volumes:
-      - ./db_data:/var/lib/postgresql/data
+      # Docker-managed named volume. Survives `up`, `down`, `restart` and
+      # container recreation. Only `docker compose down -v` deletes it.
+      - db_data:/var/lib/postgresql/data
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U konatsu -d konatsu"]
       interval: 5s

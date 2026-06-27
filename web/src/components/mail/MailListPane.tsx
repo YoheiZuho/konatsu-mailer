@@ -35,6 +35,8 @@ export function MailListPane({ selectedId, onSelect, variant, className, style }
   const setUnreadOnly = useUI((s) => s.setUnreadOnly);
   const view = useUI((s) => s.view);
   const setView = useUI((s) => s.setView);
+  const category = useUI((s) => s.category);
+  const setCategory = useUI((s) => s.setCategory);
 
   const query = useEmails();
   const emails = flattenEmails(query.data);
@@ -65,6 +67,7 @@ export function MailListPane({ selectedId, onSelect, variant, className, style }
 
   return (
     <section className={clsx('flex min-w-0 flex-col bg-surface', className)} style={style}>
+      {view === 'folder' && category && <CategoryTabs category={category} setCategory={setCategory} />}
       {variant === 'wide' ? (
         <WideToolbar
           density={density}
@@ -129,6 +132,39 @@ export function MailListPane({ selectedId, onSelect, variant, className, style }
         )}
       </div>
     </section>
+  );
+}
+
+const CATEGORIES: ReadonlyArray<{ key: string; label: string; icon: string }> = [
+  { key: 'primary', label: 'メイン', icon: 'inbox' },
+  { key: 'promotions', label: 'プロモーション', icon: 'sell' },
+  { key: 'social', label: 'ソーシャル', icon: 'group' },
+  { key: 'newsletters', label: 'ニュースレター', icon: 'feed' },
+];
+
+// Gmail-style inbox category tabs (design 案A).
+function CategoryTabs({ category, setCategory }: { category: string; setCategory: (c: string) => void }) {
+  return (
+    <div className="flex h-[46px] flex-none items-stretch gap-0 overflow-x-auto border-b border-line px-1">
+      {CATEGORIES.map((cat) => {
+        const active = category === cat.key;
+        return (
+          <button
+            key={cat.key}
+            onClick={() => setCategory(cat.key)}
+            className={clsx(
+              'flex items-center gap-2 whitespace-nowrap border-b-[3px] px-4 text-[13.5px] transition-colors',
+              active ? 'font-bold' : 'border-transparent font-medium text-content-sub hover:bg-hover',
+            )}
+            style={active ? { borderColor: 'var(--brand)', color: 'var(--text)' } : undefined}
+            aria-current={active ? 'true' : undefined}
+          >
+            <Icon name={cat.icon} size={19} className={active ? 'text-brand' : 'text-content-sub'} />
+            {cat.label}
+          </button>
+        );
+      })}
+    </div>
   );
 }
 

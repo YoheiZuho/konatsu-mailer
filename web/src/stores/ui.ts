@@ -35,6 +35,8 @@ interface UIState {
   /** Active IMAP mailbox name (when view === 'folder'). */
   folder: string;
   view: MailView;
+  /** Inbox category tab (primary/promotions/social/newsletters); null = not the inbox. */
+  category: string | null;
   labelFilter: string | null;
   search: string;
   unreadOnly: boolean;
@@ -43,8 +45,9 @@ interface UIState {
   compose: ComposeState;
   syncStatus: SyncState;
 
-  setFolder: (name: string) => void;
+  setFolder: (name: string, isInbox?: boolean) => void;
   setView: (v: MailView) => void;
+  setCategory: (c: string) => void;
   setLabelFilter: (label: string | null) => void;
   setSearch: (q: string) => void;
   setUnreadOnly: (v: boolean) => void;
@@ -61,6 +64,7 @@ interface UIState {
 export const useUI = create<UIState>((set) => ({
   folder: 'INBOX',
   view: 'folder',
+  category: 'primary',
   labelFilter: null,
   search: '',
   unreadOnly: false,
@@ -69,9 +73,11 @@ export const useUI = create<UIState>((set) => ({
   compose: emptyCompose,
   syncStatus: 'connected',
 
-  setFolder: (name) => set({ folder: name, view: 'folder', labelFilter: null }),
-  setView: (v) => set({ view: v, labelFilter: null }),
-  setLabelFilter: (label) => set({ labelFilter: label, view: 'folder' }),
+  setFolder: (name, isInbox = false) =>
+    set({ folder: name, view: 'folder', labelFilter: null, category: isInbox ? 'primary' : null }),
+  setView: (v) => set({ view: v, labelFilter: null, category: null }),
+  setCategory: (c) => set({ category: c }),
+  setLabelFilter: (label) => set({ labelFilter: label, view: 'folder', category: null }),
   setSearch: (q) => set({ search: q }),
   setUnreadOnly: (v) => set({ unreadOnly: v }),
   toggleSidebar: () => set((s) => ({ sidebarOpen: !s.sidebarOpen })),

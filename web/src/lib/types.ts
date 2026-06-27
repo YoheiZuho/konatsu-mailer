@@ -171,6 +171,34 @@ export interface LLMTestResult {
 export type ThemePref = 'system' | 'light' | 'dark';
 export type Density = 'comfortable' | 'compact';
 
+// --- Message filters (auto-classification rules) ---
+
+export type FilterField = 'subject' | 'from' | 'to' | 'cc' | 'recipient' | 'body';
+export type FilterOp = 'contains' | 'not_contains' | 'is' | 'is_not' | 'starts_with' | 'ends_with';
+export interface FilterCondition {
+  field: FilterField;
+  op: FilterOp;
+  value: string;
+}
+
+export type FilterActionType = 'move_folder' | 'add_label' | 'mark_read' | 'star' | 'set_category';
+export interface FilterAction {
+  type: FilterActionType;
+  value: string;
+}
+
+export interface FilterRule {
+  id: string;
+  name: string;
+  enabled: boolean;
+  match_type: 'all' | 'any';
+  conditions: FilterCondition[];
+  actions: FilterAction[];
+  position?: number;
+}
+
+export type FilterRuleInput = Omit<FilterRule, 'id' | 'position'>;
+
 /** Which mail categories AI analysis skips (true = no AI summary). */
 export interface AiFilters {
   promotions: boolean;

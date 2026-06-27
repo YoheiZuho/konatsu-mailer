@@ -25,6 +25,7 @@ type Email struct {
 	SenderAddr      string    `db:"sender_addr" json:"sender_addr"`
 	Recipients      Recipients `db:"recipients" json:"recipients"`
 	BodyPreview     string    `db:"body_preview" json:"body_preview"`
+	Category        string    `db:"category" json:"category"`
 	AISummary       *string   `db:"ai_summary" json:"ai_summary,omitempty"`
 	AIPriority      *int16    `db:"ai_priority" json:"ai_priority,omitempty"`
 	AnalysisStatus  string    `db:"analysis_status" json:"analysis_status"`

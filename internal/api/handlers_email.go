@@ -49,6 +49,9 @@ func listEmailsHandler(db *store.DB) gin.HandlerFunc {
 		if c.Query("unread") == "true" {
 			where = append(where, "e.is_read = false")
 		}
+		if cat := c.Query("category"); cat != "" {
+			addArg("e.category = $%d", cat)
+		}
 		if label := c.Query("label"); label != "" {
 			addArg("EXISTS (SELECT 1 FROM email_labels el JOIN labels l ON l.id=el.label_id "+
 				"WHERE el.email_id=e.id AND l.name=$%d)", label)

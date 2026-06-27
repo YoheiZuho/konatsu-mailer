@@ -24,7 +24,7 @@ import (
 
 const (
 	defaultFolder  = "INBOX"
-	initialFetch   = 50 // newest N messages fetched per account
+	initialFetch   = 300 // newest N messages fetched per folder per poll
 	pollInterval   = 30 * time.Second
 	reconcileEvery = 30 * time.Second
 	maxBackoff     = 5 * time.Minute
@@ -221,17 +221,29 @@ func (m *SyncManager) syncFolder(ctx context.Context, c *imapclient.Client, a *d
 		Partial:   &imap.SectionPartial{Offset: 0, Size: 4096},
 		Peek:      true,
 	}
+	// Classification headers, fetched to derive the inbox category.
+	headerSection := &imap.FetchItemBodySection{
+		Specifier:    imap.PartSpecifierHeader,
+		HeaderFields: []string{"List-Id", "List-Unsubscribe", "Precedence", "Auto-Submitted"},
+		Peek:         true,
+	}
 	opts := &imap.FetchOptions{
 		UID:          true,
 		Flags:        true,
 		Envelope:     true,
 		InternalDate: true,
-		BodySection:  []*imap.FetchItemBodySection{section},
+		BodySection:  []*imap.FetchItemBodySection{section, headerSection},
 	}
 
 	msgs, err := c.Fetch(seqSet, opts).Collect()
 	if err != nil {
 		return fmt.Errorf("fetch: %w", err)
+	}
+
+	// Filters run only on incoming mail (INBOX), like conventional clients.
+	var filters []domain.Filter
+	if folder == defaultFolder {
+		filters, _ = m.db.EnabledFiltersForUser(ctx, a.UserID)
 	}
 
 	var newCount int
@@ -241,6 +253,7 @@ func (m *SyncManager) syncFolder(ctx context.Context, c *imapclient.Client, a *d
 		}
 		preview := previewText(msg.FindBodySection(section))
 		email := buildEmail(a, folder, msg, preview)
+		email.Category = categorize(string(msg.FindBodySection(headerSection)), email.SenderAddr)
 
 		threadID, err := m.db.UpsertThread(ctx, a.ID, threadKey(email), email.Subject, email.DateSent)
 		if err == nil {
@@ -253,6 +266,9 @@ func (m *SyncManager) syncFolder(ctx context.Context, c *imapclient.Client, a *d
 		}
 		if inserted {
 			newCount++
+			if len(filters) > 0 {
+				m.applyFilters(ctx, c, a, id, email, filters)
+			}
 			m.hub.Broadcast(string(a.UserID), event("NEW_MAIL", map[string]any{
 				"account_id": a.ID,
 				"email_id":   id,

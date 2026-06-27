@@ -1,0 +1,3 @@
+DROP TABLE IF EXISTS filters;
+DROP INDEX IF EXISTS idx_emails_category;
+ALTER TABLE emails DROP COLUMN IF EXISTS category;

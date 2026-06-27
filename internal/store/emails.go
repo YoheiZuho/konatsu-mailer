@@ -31,8 +31,8 @@ func (db *DB) UpsertEmail(ctx context.Context, e *domain.Email) (domain.UUID, bo
 		`INSERT INTO emails
 		   (account_id, thread_id, folder, imap_uid, message_id, in_reply_to,
 		    subject, sender_name, sender_addr, recipients, body_preview,
-		    has_attachment, date_sent, is_read)
-		 VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14)
+		    has_attachment, date_sent, is_read, category)
+		 VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15)
 		 ON CONFLICT (account_id, folder, imap_uid) DO UPDATE
 		   SET is_read = EXCLUDED.is_read,
 		       subject = EXCLUDED.subject,
@@ -44,7 +44,7 @@ func (db *DB) UpsertEmail(ctx context.Context, e *domain.Email) (domain.UUID, bo
 		 RETURNING id, (xmax = 0) AS inserted`,
 		e.AccountID, e.ThreadID, e.Folder, e.IMAPUID, e.MessageID, e.InReplyTo,
 		e.Subject, e.SenderName, e.SenderAddr, e.Recipients, e.BodyPreview,
-		e.HasAttachment, e.DateSent, e.IsRead,
+		e.HasAttachment, e.DateSent, e.IsRead, categoryOrDefault(e.Category),
 	).Scan(&id, &inserted)
 	return id, inserted, err
 }
@@ -115,6 +115,53 @@ func (db *DB) ThreadEmailsForUser(ctx context.Context, threadID domain.UUID, use
 		out = append(out, e)
 	}
 	return out, rows.Err()
+}
+
+func categoryOrDefault(c string) string {
+	if c == "" {
+		return "primary"
+	}
+	return c
+}
+
+// DeleteEmail removes an email row (used after an IMAP move re-homes it).
+func (db *DB) DeleteEmail(ctx context.Context, id domain.UUID) error {
+	_, err := db.Pool.Exec(ctx, `DELETE FROM emails WHERE id=$1`, id)
+	return err
+}
+
+// SetReadByID / SetStarredByID / SetCategoryByID mutate a single email by id
+// (used by the filter engine during sync, where there is no user context).
+func (db *DB) SetReadByID(ctx context.Context, id domain.UUID, read bool) error {
+	_, err := db.Pool.Exec(ctx, `UPDATE emails SET is_read=$2 WHERE id=$1`, id, read)
+	return err
+}
+func (db *DB) SetStarredByID(ctx context.Context, id domain.UUID, starred bool) error {
+	_, err := db.Pool.Exec(ctx, `UPDATE emails SET is_starred=$2 WHERE id=$1`, id, starred)
+	return err
+}
+func (db *DB) SetCategoryByID(ctx context.Context, id domain.UUID, category string) error {
+	_, err := db.Pool.Exec(ctx, `UPDATE emails SET category=$2 WHERE id=$1`, id, category)
+	return err
+}
+
+// GetOrCreateLabel returns the id of a label by name within an account,
+// creating it if necessary.
+func (db *DB) GetOrCreateLabel(ctx context.Context, accountID domain.UUID, name string) (domain.UUID, error) {
+	var id domain.UUID
+	err := db.Pool.QueryRow(ctx,
+		`INSERT INTO labels (account_id, name) VALUES ($1,$2)
+		 ON CONFLICT (account_id, name) DO UPDATE SET name=EXCLUDED.name
+		 RETURNING id`, accountID, name).Scan(&id)
+	return id, err
+}
+
+// LinkEmailLabel attaches a label to an email (idempotent).
+func (db *DB) LinkEmailLabel(ctx context.Context, emailID, labelID domain.UUID, source string) error {
+	_, err := db.Pool.Exec(ctx,
+		`INSERT INTO email_labels (email_id, label_id, source) VALUES ($1,$2,$3)
+		 ON CONFLICT (email_id, label_id) DO NOTHING`, emailID, labelID, source)
+	return err
 }
 
 // UnreadCounts returns unread message counts per folder for a user, plus the

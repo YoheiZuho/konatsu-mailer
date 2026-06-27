@@ -9,14 +9,16 @@ import { AppearanceSettings } from '@/components/settings/AppearanceSettings';
 import { AccountSettings } from '@/components/settings/AccountSettings';
 import { LLMSettings } from '@/components/settings/LLMSettings';
 import { LabelSettings } from '@/components/settings/LabelSettings';
+import { FilterSettings } from '@/components/settings/FilterSettings';
 import { NotificationSettings } from '@/components/settings/NotificationSettings';
 
-type TabId = 'appearance' | 'accounts' | 'llm' | 'labels' | 'notifications';
+type TabId = 'appearance' | 'accounts' | 'llm' | 'filters' | 'labels' | 'notifications';
 
 const TABS: ReadonlyArray<{ id: TabId; icon: string; label: string }> = [
   { id: 'appearance', icon: 'palette', label: '外観' },
   { id: 'accounts', icon: 'alternate_email', label: 'アカウント' },
   { id: 'llm', icon: 'smart_toy', label: 'AI接続' },
+  { id: 'filters', icon: 'filter_alt', label: 'フィルター' },
   { id: 'labels', icon: 'label', label: 'ラベル' },
   { id: 'notifications', icon: 'notifications', label: '通知' },
 ];
@@ -66,6 +68,7 @@ export function SettingsDialog() {
             {tab === 'appearance' && <AppearanceSettings />}
             {tab === 'accounts' && <AccountSettings />}
             {tab === 'llm' && <LLMSettings />}
+            {tab === 'filters' && <FilterSettings />}
             {tab === 'labels' && <LabelSettings />}
             {tab === 'notifications' && <NotificationSettings />}
           </div>
