@@ -14,6 +14,7 @@ import { usePreferences } from '@/hooks/queries';
 import { useWebSocket } from '@/hooks/useWebSocket';
 import { useMediaQuery } from '@/hooks/useMediaQuery';
 
+import { Icon } from '@/components/common/Icon';
 import { TopBar } from '@/components/layout/TopBar';
 import { Sidebar } from '@/components/layout/Sidebar';
 import { Resizer } from '@/components/common/Resizer';
@@ -32,6 +33,7 @@ export function MailApp() {
   const setSidebarOpen = useUI((s) => s.setSidebarOpen);
   const composeOpen = useUI((s) => s.compose.open);
   const settingsOpen = useUI((s) => s.settingsOpen);
+  const openCompose = useUI((s) => s.openCompose);
 
   const sidebarWidth = useAppearance((s) => s.sidebarWidth);
   const setSidebarWidth = useAppearance((s) => s.setSidebarWidth);
@@ -100,6 +102,18 @@ export function MailApp() {
           </div>
           <div className="animate-fade-in flex-1 bg-black/40" onClick={() => setSidebarOpen(false)} aria-hidden="true" />
         </div>
+      )}
+
+      {/* Mobile floating compose button (the sidebar's 作成 is hidden in the drawer). */}
+      {!isWide && !composeOpen && !settingsOpen && (
+        <button
+          onClick={() => openCompose()}
+          className="animate-scale-in fixed bottom-5 right-5 z-30 flex h-14 w-14 items-center justify-center rounded-2xl shadow-compose transition-transform active:scale-95"
+          style={{ background: 'var(--brand)', color: 'var(--on-brand)' }}
+          aria-label="作成"
+        >
+          <Icon name="edit" size={24} />
+        </button>
       )}
 
       {composeOpen && <ComposeDialog />}
