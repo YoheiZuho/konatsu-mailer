@@ -27,10 +27,18 @@ export function MailRow(props: MailRowProps) {
   return <WideComfortableRow {...props} />;
 }
 
-function rowInteract(onSelect: () => void) {
+/** dataTransfer key carrying the dragged email id. */
+export const EMAIL_DND_TYPE = 'application/x-konatsu-email';
+
+function rowInteract(onSelect: () => void, emailID: string) {
   return {
     role: 'button' as const,
     tabIndex: 0,
+    draggable: true,
+    onDragStart: (e: React.DragEvent) => {
+      e.dataTransfer.setData(EMAIL_DND_TYPE, emailID);
+      e.dataTransfer.effectAllowed = 'move';
+    },
     onClick: onSelect,
     onKeyDown: (e: React.KeyboardEvent) => {
       if (e.key === 'Enter' || e.key === ' ') {
@@ -66,7 +74,7 @@ function ColumnRow({ email, selected, aiOn, onSelect }: MailRowProps) {
   const sender = email.sender_name || email.sender_addr;
   return (
     <div
-      {...rowInteract(onSelect)}
+      {...rowInteract(onSelect, email.id)}
       className={clsx(
         'flex cursor-pointer items-start gap-[11px] border-b border-line/70 px-4 py-[11px] outline-none transition-colors',
         !selected && 'hover:bg-hover',
@@ -111,7 +119,7 @@ function WideComfortableRow({ email, aiOn, onSelect, onToggleStar }: MailRowProp
   const sender = email.sender_name || email.sender_addr;
   return (
     <div
-      {...rowInteract(onSelect)}
+      {...rowInteract(onSelect, email.id)}
       className="group flex cursor-pointer items-start gap-[13px] border-b border-line/70 px-[18px] pb-3 pt-[11px] outline-none transition-colors hover:bg-hover hover:shadow-[inset_3px_0_0_var(--brand)]"
     >
       <div className="flex flex-none items-center gap-2 pt-1">
@@ -155,7 +163,7 @@ function WideCompactRow({ email, aiOn, onSelect, onToggleStar }: MailRowProps) {
   const sender = email.sender_name || email.sender_addr;
   return (
     <div
-      {...rowInteract(onSelect)}
+      {...rowInteract(onSelect, email.id)}
       className="group flex h-[42px] cursor-pointer items-center gap-2.5 border-b border-line/70 px-[18px] outline-none transition-colors hover:bg-hover hover:shadow-[inset_3px_0_0_var(--brand)]"
     >
       <DecorCheckbox size={18} />

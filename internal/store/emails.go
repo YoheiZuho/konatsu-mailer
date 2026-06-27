@@ -180,6 +180,15 @@ func (db *DB) LinkEmailLabel(ctx context.Context, emailID, labelID domain.UUID, 
 	return err
 }
 
+// UnlinkEmailLabelByName removes a label (by name within the account) from an email.
+func (db *DB) UnlinkEmailLabelByName(ctx context.Context, emailID, accountID domain.UUID, name string) error {
+	_, err := db.Pool.Exec(ctx,
+		`DELETE FROM email_labels el USING labels l
+		 WHERE el.label_id = l.id AND el.email_id = $1 AND l.account_id = $2 AND l.name = $3`,
+		emailID, accountID, name)
+	return err
+}
+
 // UnreadCounts returns unread message counts per folder for a user, plus the
 // unread counts for the virtual starred and important views.
 func (db *DB) UnreadCounts(ctx context.Context, userID string) (perFolder map[string]int, starred, important int, err error) {

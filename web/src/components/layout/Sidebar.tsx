@@ -1,9 +1,12 @@
 // SPDX-License-Identifier: Apache-2.0
 
+import { useState } from 'react';
 import clsx from 'clsx';
 import { useUI } from '@/stores/ui';
 import { useFolders, useLabels } from '@/hooks/queries';
+import { useMoveEmail, useAssignLabels } from '@/hooks/mutations';
 import { Icon } from '@/components/common/Icon';
+import { EMAIL_DND_TYPE } from '@/components/mail/MailRow';
 import type { FolderRole, MailFolder } from '@/lib/types';
 
 const ROLE_META: Record<Exclude<FolderRole, ''>, { label: string; icon: string; order: number }> = {
@@ -30,6 +33,8 @@ export function Sidebar({ width }: { width?: number }) {
 
   const { data } = useFolders();
   const { data: labels } = useLabels();
+  const moveEmail = useMoveEmail();
+  const assignLabels = useAssignLabels();
 
   const folders = data?.items ?? [];
   const inbox = folders.find((f) => f.role === 'inbox' || f.name === 'INBOX');
@@ -57,7 +62,8 @@ export function Sidebar({ width }: { width?: number }) {
         label="受信トレイ"
         count={inbox?.unread}
         active={folderActive(inbox?.name ?? 'INBOX')}
-        onClick={() => setFolder(inbox?.name ?? 'INBOX', true)}
+        onClick={() => setFolder(inbox?.name ?? 'INBOX')}
+        onDropEmail={(id) => moveEmail.mutate({ id, folder: inbox?.name ?? 'INBOX' })}
       />
       <Item
         icon="star"
@@ -82,6 +88,7 @@ export function Sidebar({ width }: { width?: number }) {
           count={f.unread}
           active={folderActive(f.name)}
           onClick={() => setFolder(f.name)}
+          onDropEmail={(id) => moveEmail.mutate({ id, folder: f.name })}
         />
       ))}
 
@@ -95,6 +102,7 @@ export function Sidebar({ width }: { width?: number }) {
           label={label.name}
           active={labelFilter === label.name}
           onClick={() => setLabelFilter(label.name)}
+          onDropEmail={(id) => assignLabels.mutate({ id, add: [label.name] })}
         />
       ))}
 
@@ -119,15 +127,36 @@ interface ItemProps {
   count?: number;
   active: boolean;
   onClick: () => void;
+  onDropEmail?: (emailID: string) => void;
 }
 
-function Item({ icon, dotColor, label, count, active, onClick }: ItemProps) {
+function Item({ icon, dotColor, label, count, active, onClick, onDropEmail }: ItemProps) {
+  const [dragOver, setDragOver] = useState(false);
+  const dropHandlers = onDropEmail
+    ? {
+        onDragOver: (e: React.DragEvent) => {
+          if (e.dataTransfer.types.includes(EMAIL_DND_TYPE)) {
+            e.preventDefault();
+            setDragOver(true);
+          }
+        },
+        onDragLeave: () => setDragOver(false),
+        onDrop: (e: React.DragEvent) => {
+          e.preventDefault();
+          setDragOver(false);
+          const id = e.dataTransfer.getData(EMAIL_DND_TYPE);
+          if (id) onDropEmail(id);
+        },
+      }
+    : {};
   return (
     <button
       onClick={onClick}
+      {...dropHandlers}
       className={clsx(
         'mr-2.5 flex h-9 items-center gap-[18px] rounded-r-full pl-[22px] pr-3 text-left text-[14px] transition-colors',
         active ? 'font-bold' : 'text-content hover:bg-hover',
+        dragOver && 'ring-2 ring-inset ring-brand',
       )}
       style={active ? { background: 'var(--brand-weak)', color: 'var(--text)' } : undefined}
       aria-current={active ? 'page' : undefined}

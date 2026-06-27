@@ -103,7 +103,7 @@ export function ReadingPane({ emailId, onBack, showBack, className }: ReadingPan
       </div>
 
       {/* Body */}
-      <div key={emailId} className="animate-fade-in min-h-0 flex-1 overflow-y-auto px-5 py-6 sm:px-7">
+      <div key={emailId} className="animate-fade-in min-h-0 flex-1 overflow-y-auto px-3 py-5 sm:px-7 sm:py-6">
         {thread.isLoading ? (
           <CenteredSpinner />
         ) : thread.isError ? (

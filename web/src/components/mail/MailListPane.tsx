@@ -4,8 +4,9 @@ import { useEffect, useRef } from 'react';
 import clsx from 'clsx';
 import { useVirtualizer } from '@tanstack/react-virtual';
 
-import { useEmails, flattenEmails } from '@/hooks/queries';
-import { useToggleStar, useMarkRead } from '@/hooks/mutations';
+import { useEmails, flattenEmails, useInboxName } from '@/hooks/queries';
+import { useToggleStar, useMarkRead, useSetCategory } from '@/hooks/mutations';
+import { EMAIL_DND_TYPE } from '@/components/mail/MailRow';
 import { useUI, type MailView } from '@/stores/ui';
 import { useAppearance } from '@/stores/appearance';
 import { MailRow } from '@/components/mail/MailRow';
@@ -35,14 +36,19 @@ export function MailListPane({ selectedId, onSelect, variant, className, style }
   const setUnreadOnly = useUI((s) => s.setUnreadOnly);
   const view = useUI((s) => s.view);
   const setView = useUI((s) => s.setView);
+  const folder = useUI((s) => s.folder);
+  const labelFilter = useUI((s) => s.labelFilter);
   const category = useUI((s) => s.category);
   const setCategory = useUI((s) => s.setCategory);
+  const inboxName = useInboxName();
+  const showCategoryTabs = view === 'folder' && !labelFilter && folder === inboxName;
 
   const query = useEmails();
   const emails = flattenEmails(query.data);
 
   const toggleStar = useToggleStar();
   const markRead = useMarkRead();
+  const setCategoryMut = useSetCategory();
 
   const parentRef = useRef<HTMLDivElement>(null);
   const virtualizer = useVirtualizer({
@@ -67,7 +73,13 @@ export function MailListPane({ selectedId, onSelect, variant, className, style }
 
   return (
     <section className={clsx('flex min-w-0 flex-col bg-surface', className)} style={style}>
-      {view === 'folder' && category && <CategoryTabs category={category} setCategory={setCategory} />}
+      {showCategoryTabs && (
+        <CategoryTabs
+          category={category}
+          setCategory={setCategory}
+          onDropCategory={(cat, id) => setCategoryMut.mutate({ id, category: cat })}
+        />
+      )}
       {variant === 'wide' ? (
         <WideToolbar
           density={density}
@@ -142,8 +154,17 @@ const CATEGORIES: ReadonlyArray<{ key: string; label: string; icon: string }> = 
   { key: 'newsletters', label: 'ニュースレター', icon: 'feed' },
 ];
 
-// Gmail-style inbox category tabs (design 案A).
-function CategoryTabs({ category, setCategory }: { category: string; setCategory: (c: string) => void }) {
+// Gmail-style inbox category tabs (design 案A). Also drop targets: dropping a
+// mail onto a tab recategorizes it.
+function CategoryTabs({
+  category,
+  setCategory,
+  onDropCategory,
+}: {
+  category: string;
+  setCategory: (c: string) => void;
+  onDropCategory: (cat: string, emailID: string) => void;
+}) {
   return (
     <div className="flex h-[46px] flex-none items-stretch gap-0 overflow-x-auto border-b border-line px-1">
       {CATEGORIES.map((cat) => {
@@ -152,6 +173,14 @@ function CategoryTabs({ category, setCategory }: { category: string; setCategory
           <button
             key={cat.key}
             onClick={() => setCategory(cat.key)}
+            onDragOver={(e) => {
+              if (e.dataTransfer.types.includes(EMAIL_DND_TYPE)) e.preventDefault();
+            }}
+            onDrop={(e) => {
+              e.preventDefault();
+              const id = e.dataTransfer.getData(EMAIL_DND_TYPE);
+              if (id) onDropCategory(cat.key, id);
+            }}
             className={clsx(
               'flex items-center gap-2 whitespace-nowrap border-b-[3px] px-4 text-[13.5px] transition-colors',
               active ? 'font-bold' : 'border-transparent font-medium text-content-sub hover:bg-hover',

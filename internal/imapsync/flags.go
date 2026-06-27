@@ -39,3 +39,22 @@ func SetSeen(ctx context.Context, a domain.Account, password, folder string, uid
 	}
 	return nil
 }
+
+// MoveMessage moves a message (by UID) from srcFolder to destFolder via IMAP.
+func MoveMessage(ctx context.Context, a domain.Account, password, srcFolder string, uid int64, destFolder string) error {
+	c, err := dial(a)
+	if err != nil {
+		return fmt.Errorf("dial: %w", err)
+	}
+	defer c.Close()
+	if err := c.Login(a.AuthUser, password).Wait(); err != nil {
+		return fmt.Errorf("login: %w", err)
+	}
+	if _, err := c.Select(srcFolder, nil).Wait(); err != nil {
+		return fmt.Errorf("select: %w", err)
+	}
+	if _, err := c.Move(imap.UIDSetNum(imap.UID(uid)), destFolder).Wait(); err != nil {
+		return fmt.Errorf("move: %w", err)
+	}
+	return nil
+}

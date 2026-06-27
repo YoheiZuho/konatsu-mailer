@@ -42,6 +42,8 @@ func NewRouter(cfg *config.Config, db *store.DB, hub *ws.Hub, analyzer Enqueuer)
 			auth.PATCH("/emails/:id/read", patchReadHandler(db, cfg))
 			auth.PATCH("/emails/:id/star", patchStarHandler(db))
 			auth.POST("/emails/:id/labels", assignLabelsHandler(db))
+			auth.PATCH("/emails/:id/category", setCategoryHandler(db))
+			auth.POST("/emails/:id/move", moveEmailHandler(db, cfg))
 			auth.POST("/emails/:id/reanalyze", reanalyzeHandler(db, analyzer))
 
 			auth.GET("/labels", listLabelsHandler(db))

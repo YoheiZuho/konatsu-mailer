@@ -376,8 +376,104 @@ func sendEmailHandler(db *store.DB, cfg *config.Config) gin.HandlerFunc {
 
 func assignLabelsHandler(db *store.DB) gin.HandlerFunc {
 	return func(c *gin.Context) {
-		// Manual label assignment is not yet implemented (labels are AI-driven).
+		userID := c.GetString("userID")
+		ctx := c.Request.Context()
+		var body struct {
+			Add    []string `json:"add"`
+			Remove []string `json:"remove"`
+		}
+		if err := c.ShouldBindJSON(&body); err != nil {
+			c.JSON(http.StatusBadRequest, errorResponse("validation_error", err.Error()))
+			return
+		}
+		rec, err := db.GetEmailForUser(ctx, c.Param("id"), userID)
+		if err != nil {
+			c.JSON(http.StatusNotFound, errorResponse("not_found", "email not found"))
+			return
+		}
+		for _, name := range body.Add {
+			if name == "" {
+				continue
+			}
+			if labelID, _, e := db.GetOrCreateLabel(ctx, rec.AccountID, name, false); e == nil {
+				_ = db.LinkEmailLabel(ctx, rec.ID, labelID, "user")
+			}
+		}
+		for _, name := range body.Remove {
+			_ = db.UnlinkEmailLabelByName(ctx, rec.ID, rec.AccountID, name)
+		}
 		c.JSON(http.StatusOK, gin.H{"ok": true})
+	}
+}
+
+// setCategoryHandler changes an email's inbox category (drag-and-drop / manual).
+func setCategoryHandler(db *store.DB) gin.HandlerFunc {
+	return func(c *gin.Context) {
+		userID := c.GetString("userID")
+		ctx := c.Request.Context()
+		var body struct {
+			Category string `json:"category" binding:"required"`
+		}
+		if err := c.ShouldBindJSON(&body); err != nil {
+			c.JSON(http.StatusBadRequest, errorResponse("validation_error", err.Error()))
+			return
+		}
+		rec, err := db.GetEmailForUser(ctx, c.Param("id"), userID)
+		if err != nil {
+			c.JSON(http.StatusNotFound, errorResponse("not_found", "email not found"))
+			return
+		}
+		if err := db.SetCategoryByID(ctx, rec.ID, body.Category); err != nil {
+			c.JSON(http.StatusInternalServerError, errorResponse("internal_error", "failed to set category"))
+			return
+		}
+		c.JSON(http.StatusOK, gin.H{"category": body.Category})
+	}
+}
+
+// moveEmailHandler moves an email to another IMAP folder (drag-and-drop).
+func moveEmailHandler(db *store.DB, cfg *config.Config) gin.HandlerFunc {
+	return func(c *gin.Context) {
+		userID := c.GetString("userID")
+		ctx := c.Request.Context()
+		var body struct {
+			Folder string `json:"folder" binding:"required"`
+		}
+		if err := c.ShouldBindJSON(&body); err != nil {
+			c.JSON(http.StatusBadRequest, errorResponse("validation_error", err.Error()))
+			return
+		}
+		rec, err := db.GetEmailForUser(ctx, c.Param("id"), userID)
+		if err != nil {
+			c.JSON(http.StatusNotFound, errorResponse("not_found", "email not found"))
+			return
+		}
+		if body.Folder == rec.Folder {
+			c.JSON(http.StatusOK, gin.H{"moved": true})
+			return
+		}
+		account, err := db.GetAccountForUser(ctx, string(rec.AccountID), userID)
+		if err != nil {
+			c.JSON(http.StatusBadRequest, errorResponse("no_account", "account not found"))
+			return
+		}
+		enc, err := crypto.NewAES256GCM(cfg.MasterEncKey)
+		if err != nil {
+			c.JSON(http.StatusInternalServerError, errorResponse("internal_error", "encryption unavailable"))
+			return
+		}
+		password, err := enc.Decrypt(account.PasswordEncrypted)
+		if err != nil {
+			c.JSON(http.StatusInternalServerError, errorResponse("internal_error", "failed to decrypt credentials"))
+			return
+		}
+		if err := imapsync.MoveMessage(ctx, account, string(password), rec.Folder, rec.IMAPUID, body.Folder); err != nil {
+			c.JSON(http.StatusBadGateway, errorResponse("move_failed", err.Error()))
+			return
+		}
+		// Drop the source row; the target folder's next sync re-adds it.
+		_ = db.DeleteEmail(ctx, rec.ID)
+		c.JSON(http.StatusOK, gin.H{"moved": true})
 	}
 }
 

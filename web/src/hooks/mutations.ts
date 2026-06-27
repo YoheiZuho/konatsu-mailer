@@ -77,6 +77,49 @@ export function useAssignLabels() {
   });
 }
 
+/** Remove an email from every cached list page (after move / recategorize). */
+function removeEmailFromLists(qc: ReturnType<typeof useQueryClient>, id: string) {
+  qc.setQueriesData<InfiniteData<EmailListResponse>>({ queryKey: ['emails'] }, (data) => {
+    if (!data) return data;
+    return {
+      ...data,
+      pages: data.pages.map((page) => ({ ...page, items: page.items.filter((it) => it.id !== id) })),
+    };
+  });
+}
+
+export function useMoveEmail() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ id, folder }: { id: string; folder: string }) =>
+      api.post(`/emails/${id}/move`, { folder }),
+    onMutate: async ({ id }) => {
+      await qc.cancelQueries({ queryKey: ['emails'] });
+      removeEmailFromLists(qc, id);
+    },
+    onSettled: () => {
+      qc.invalidateQueries({ queryKey: ['emails'] });
+      qc.invalidateQueries({ queryKey: ['folders'] });
+    },
+  });
+}
+
+export function useSetCategory() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ id, category }: { id: string; category: string }) =>
+      api.patch(`/emails/${id}/category`, { category }),
+    onMutate: async ({ id }) => {
+      await qc.cancelQueries({ queryKey: ['emails'] });
+      removeEmailFromLists(qc, id); // leaves the current category view
+    },
+    onSettled: () => {
+      qc.invalidateQueries({ queryKey: ['emails'] });
+      qc.invalidateQueries({ queryKey: ['folders'] });
+    },
+  });
+}
+
 export function useReanalyze() {
   const qc = useQueryClient();
   return useMutation({

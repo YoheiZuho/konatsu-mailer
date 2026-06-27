@@ -24,7 +24,8 @@ import type {
 export interface EmailFilter {
   folder: string;
   view: MailView;
-  category: string | null;
+  /** Effective category (already gated to the inbox; "" disables it). */
+  category: string;
   label: string | null;
   q: string;
   unread: boolean;
@@ -61,7 +62,7 @@ function buildEmailQuery(f: EmailFilter, cursor?: string | null): string {
 
 /** Infinite (keyset-paginated) list of emails for the active filter. */
 export function useEmails() {
-  const filter: EmailFilter = useUI(
+  const raw = useUI(
     useShallow((s) => ({
       folder: s.folder,
       view: s.view,
@@ -71,6 +72,10 @@ export function useEmails() {
       unread: s.unreadOnly,
     })),
   );
+  const inboxName = useInboxName();
+  // The category only applies to the inbox (and not while filtering by label).
+  const isInbox = raw.view === 'folder' && !raw.label && raw.folder === inboxName;
+  const filter: EmailFilter = { ...raw, category: isInbox ? raw.category : '' };
 
   return useInfiniteQuery<
     EmailListResponse,
@@ -108,6 +113,12 @@ export function useFolders() {
     queryFn: () => api.get<FoldersResponse>('/folders'),
     staleTime: 30_000,
   });
+}
+
+/** Name of the inbox mailbox (role "inbox"), defaulting to "INBOX". */
+export function useInboxName(): string {
+  const { data } = useFolders();
+  return data?.items.find((f) => f.role === 'inbox' || f.name === 'INBOX')?.name ?? 'INBOX';
 }
 
 export function useLabels() {
