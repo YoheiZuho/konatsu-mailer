@@ -56,17 +56,24 @@ func listEmailsHandler(db *store.DB) gin.HandlerFunc {
 			addArg("EXISTS (SELECT 1 FROM email_labels el JOIN labels l ON l.id=el.label_id "+
 				"WHERE el.email_id=e.id AND l.name=$%d)", label)
 		}
+		// When searching, also match the cached full body (email_bodies) via a
+		// LEFT JOIN; this covers messages that have been opened (body cached).
+		bodyJoin := ""
 		if q := strings.TrimSpace(c.Query("q")); q != "" {
+			bodyJoin = " LEFT JOIN email_bodies eb ON eb.email_id = e.id"
 			args = append(args, q)
 			idx := len(args)
-			// Full-text (tsvector, word/phrase) OR substring (ILIKE, covers CJK).
+			// Full-text (tsvector, word/phrase) OR substring (ILIKE, covers CJK),
+			// across subject/sender/preview (all mail) and the cached body (opened).
 			where = append(where, fmt.Sprintf(
 				"(e.search_tsv @@ websearch_to_tsquery('simple', $%d)"+
+					" OR eb.search_tsv @@ websearch_to_tsquery('simple', $%d)"+
 					" OR e.subject ILIKE '%%'||$%d||'%%'"+
 					" OR e.sender_addr ILIKE '%%'||$%d||'%%'"+
 					" OR e.sender_name ILIKE '%%'||$%d||'%%'"+
-					" OR e.body_preview ILIKE '%%'||$%d||'%%')",
-				idx, idx, idx, idx, idx))
+					" OR e.body_preview ILIKE '%%'||$%d||'%%'"+
+					" OR eb.text ILIKE '%%'||$%d||'%%')",
+				idx, idx, idx, idx, idx, idx, idx))
 		}
 		if cursor := c.Query("cursor"); cursor != "" {
 			if t, err := time.Parse(time.RFC3339, cursor); err == nil {
@@ -81,7 +88,7 @@ func listEmailsHandler(db *store.DB) gin.HandlerFunc {
 			COALESCE((SELECT json_agg(json_build_object('name', l.name, 'color', l.color))
 			          FROM email_labels el JOIN labels l ON l.id = el.label_id
 			          WHERE el.email_id = e.id), '[]') AS labels
-		FROM emails e JOIN accounts a ON a.id = e.account_id
+		FROM emails e JOIN accounts a ON a.id = e.account_id` + bodyJoin + `
 		WHERE ` + strings.Join(where, " AND ") + `
 		ORDER BY e.date_sent DESC
 		LIMIT $` + strconv.Itoa(len(args))
@@ -165,7 +172,7 @@ func getEmailHandler(db *store.DB, cfg *config.Config) gin.HandlerFunc {
 
 		out := make([]gin.H, 0, len(messages))
 		for _, m := range messages {
-			body := bodies[m.IMAPUID]
+			body := bodies[m.ID]
 			text := body.Text
 			if text == "" && body.HTML == "" {
 				text = m.BodyPreview // graceful fallback if IMAP fetch failed
@@ -200,27 +207,41 @@ func getEmailHandler(db *store.DB, cfg *config.Config) gin.HandlerFunc {
 	}
 }
 
-// fetchThreadBodies retrieves and parses message bodies from IMAP, grouped by
-// account and folder. Failures degrade silently (the caller falls back to the
-// stored preview).
-func fetchThreadBodies(ctx context.Context, db *store.DB, cfg *config.Config, messages []store.EmailRecord) map[int64]imapsync.ParsedBody {
-	result := make(map[int64]imapsync.ParsedBody)
+// fetchThreadBodies returns message bodies keyed by email id, reading from the
+// DB cache and fetching only cache misses from IMAP (then persisting them).
+// Failures degrade silently (the caller falls back to the stored preview).
+func fetchThreadBodies(ctx context.Context, db *store.DB, cfg *config.Config, messages []store.EmailRecord) map[domain.UUID]store.CachedBody {
+	result := make(map[domain.UUID]store.CachedBody)
+
+	// 1. Serve from the DB cache.
+	var misses []store.EmailRecord
+	for _, m := range messages {
+		if cb, ok, _ := db.GetEmailBody(ctx, m.ID); ok {
+			result[m.ID] = cb
+		} else {
+			misses = append(misses, m)
+		}
+	}
+	if len(misses) == 0 {
+		return result
+	}
+
+	// 2. Fetch misses from IMAP (grouped by account+folder) and cache them.
 	enc, err := crypto.NewAES256GCM(cfg.MasterEncKey)
 	if err != nil {
 		return result
 	}
-
 	type group struct {
 		account domain.UUID
 		folder  string
 	}
-	groups := make(map[group][]int64)
-	for _, m := range messages {
+	groups := make(map[group][]store.EmailRecord)
+	for _, m := range misses {
 		g := group{m.AccountID, m.Folder}
-		groups[g] = append(groups[g], m.IMAPUID)
+		groups[g] = append(groups[g], m)
 	}
 
-	for g, uids := range groups {
+	for g, recs := range groups {
 		account, err := db.GetAccount(ctx, string(g.account))
 		if err != nil {
 			continue
@@ -229,15 +250,33 @@ func fetchThreadBodies(ctx context.Context, db *store.DB, cfg *config.Config, me
 		if err != nil {
 			continue
 		}
-		bodies, err := imapsync.FetchBodies(ctx, account, string(password), g.folder, uids)
+		uids := make([]int64, len(recs))
+		for i, r := range recs {
+			uids[i] = r.IMAPUID
+		}
+		parsed, err := imapsync.FetchBodies(ctx, account, string(password), g.folder, uids)
 		if err != nil {
 			continue
 		}
-		for uid, b := range bodies {
-			result[uid] = b
+		for _, r := range recs {
+			pb, ok := parsed[r.IMAPUID]
+			if !ok || (pb.Text == "" && pb.HTML == "") {
+				continue
+			}
+			cb := store.CachedBody{Text: pb.Text, HTML: pb.HTML, Attachments: toBodyAttachments(pb.Attachments)}
+			_ = db.SaveEmailBody(ctx, r.ID, cb) // populate cache for next time
+			result[r.ID] = cb
 		}
 	}
 	return result
+}
+
+func toBodyAttachments(atts []imapsync.AttachmentInfo) []store.BodyAttachment {
+	out := make([]store.BodyAttachment, len(atts))
+	for i, a := range atts {
+		out[i] = store.BodyAttachment{Filename: a.Filename, Size: a.Size}
+	}
+	return out
 }
 
 func patchReadHandler(db *store.DB, cfg *config.Config) gin.HandlerFunc {
@@ -524,7 +563,7 @@ func recipientsByType(rs domain.Recipients, typ string) []gin.H {
 	return out
 }
 
-func attachmentsJSON(atts []imapsync.AttachmentInfo) []gin.H {
+func attachmentsJSON(atts []store.BodyAttachment) []gin.H {
 	out := make([]gin.H, 0, len(atts))
 	for i, a := range atts {
 		out = append(out, gin.H{"id": strconv.Itoa(i), "filename": a.Filename, "size": a.Size})
