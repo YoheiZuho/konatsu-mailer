@@ -2,16 +2,18 @@ package api
 
 import (
 	"net/http"
+	"time"
 
 	"github.com/gin-gonic/gin"
 
 	"github.com/yoheizuho/konatsu-mailer/internal/config"
+	"github.com/yoheizuho/konatsu-mailer/internal/imapsync"
 	"github.com/yoheizuho/konatsu-mailer/internal/store"
 	"github.com/yoheizuho/konatsu-mailer/internal/ws"
 )
 
 // NewRouter creates the main Gin router with all handlers.
-func NewRouter(cfg *config.Config, db *store.DB, hub *ws.Hub, analyzer Enqueuer) *gin.Engine {
+func NewRouter(cfg *config.Config, db *store.DB, hub *ws.Hub, analyzer Enqueuer, pool *imapsync.Pool) *gin.Engine {
 	r := gin.New()
 	r.Use(gin.Recovery())
 	r.Use(corsMiddleware())
@@ -19,11 +21,12 @@ func NewRouter(cfg *config.Config, db *store.DB, hub *ws.Hub, analyzer Enqueuer)
 
 	api := r.Group("/api")
 	{
-		// Public
+		// Public. Auth endpoints are rate-limited per IP against brute force.
+		authRL := newRateLimiter(20, time.Minute).middleware()
 		api.GET("/auth/config", authConfigHandler(cfg))
-		api.POST("/auth/register", registerHandler(db, cfg))
-		api.POST("/auth/login", loginHandler(db, cfg))
-		api.POST("/auth/refresh", refreshHandler(cfg))
+		api.POST("/auth/register", authRL, registerHandler(db, cfg))
+		api.POST("/auth/login", authRL, loginHandler(db, cfg))
+		api.POST("/auth/refresh", authRL, refreshHandler(cfg))
 
 		// Authenticated
 		auth := api.Group("")
@@ -37,13 +40,13 @@ func NewRouter(cfg *config.Config, db *store.DB, hub *ws.Hub, analyzer Enqueuer)
 			auth.DELETE("/filters/:id", deleteFilterHandler(db))
 
 			auth.GET("/emails", listEmailsHandler(db))
-			auth.GET("/emails/:id", getEmailHandler(db, cfg))
+			auth.GET("/emails/:id", getEmailHandler(db, cfg, pool))
 			auth.POST("/emails/send", sendEmailHandler(db, cfg))
-			auth.PATCH("/emails/:id/read", patchReadHandler(db, cfg))
+			auth.PATCH("/emails/:id/read", patchReadHandler(db, cfg, pool))
 			auth.PATCH("/emails/:id/star", patchStarHandler(db))
 			auth.POST("/emails/:id/labels", assignLabelsHandler(db))
 			auth.PATCH("/emails/:id/category", setCategoryHandler(db))
-			auth.POST("/emails/:id/move", moveEmailHandler(db, cfg))
+			auth.POST("/emails/:id/move", moveEmailHandler(db, cfg, pool))
 			auth.POST("/emails/:id/reanalyze", reanalyzeHandler(db, analyzer))
 
 			auth.GET("/labels", listLabelsHandler(db))

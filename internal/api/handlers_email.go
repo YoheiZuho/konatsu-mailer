@@ -149,7 +149,7 @@ func listEmailsHandler(db *store.DB) gin.HandlerFunc {
 
 // getEmailHandler serves GET /api/emails/:id, returning the full thread with
 // bodies fetched on demand from IMAP (design §7.2).
-func getEmailHandler(db *store.DB, cfg *config.Config) gin.HandlerFunc {
+func getEmailHandler(db *store.DB, cfg *config.Config, pool *imapsync.Pool) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		userID := c.GetString("userID")
 		id := c.Param("id")
@@ -168,7 +168,7 @@ func getEmailHandler(db *store.DB, cfg *config.Config) gin.HandlerFunc {
 			}
 		}
 
-		bodies := fetchThreadBodies(ctx, db, cfg, messages)
+		bodies := fetchThreadBodies(ctx, db, cfg, pool, messages)
 
 		out := make([]gin.H, 0, len(messages))
 		for _, m := range messages {
@@ -185,7 +185,7 @@ func getEmailHandler(db *store.DB, cfg *config.Config) gin.HandlerFunc {
 				"date":        m.DateSent.Format(time.RFC3339),
 				"subject":     m.Subject,
 				"text":        text,
-				"html":        body.HTML,
+				"html":        sanitizeHTML(body.HTML),
 				"ai_summary":  m.AISummary,
 				"ai_priority": m.AIPriority,
 				"is_read":     m.IsRead,
@@ -210,7 +210,7 @@ func getEmailHandler(db *store.DB, cfg *config.Config) gin.HandlerFunc {
 // fetchThreadBodies returns message bodies keyed by email id, reading from the
 // DB cache and fetching only cache misses from IMAP (then persisting them).
 // Failures degrade silently (the caller falls back to the stored preview).
-func fetchThreadBodies(ctx context.Context, db *store.DB, cfg *config.Config, messages []store.EmailRecord) map[domain.UUID]store.CachedBody {
+func fetchThreadBodies(ctx context.Context, db *store.DB, cfg *config.Config, pool *imapsync.Pool, messages []store.EmailRecord) map[domain.UUID]store.CachedBody {
 	result := make(map[domain.UUID]store.CachedBody)
 
 	// 1. Serve from the DB cache.
@@ -254,7 +254,7 @@ func fetchThreadBodies(ctx context.Context, db *store.DB, cfg *config.Config, me
 		for i, r := range recs {
 			uids[i] = r.IMAPUID
 		}
-		parsed, err := imapsync.FetchBodies(ctx, account, string(password), g.folder, uids)
+		parsed, err := pool.FetchBodies(ctx, account, string(password), g.folder, uids)
 		if err != nil {
 			continue
 		}
@@ -279,7 +279,7 @@ func toBodyAttachments(atts []imapsync.AttachmentInfo) []store.BodyAttachment {
 	return out
 }
 
-func patchReadHandler(db *store.DB, cfg *config.Config) gin.HandlerFunc {
+func patchReadHandler(db *store.DB, cfg *config.Config, pool *imapsync.Pool) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		userID := c.GetString("userID")
 		id := c.Param("id")
@@ -297,13 +297,13 @@ func patchReadHandler(db *store.DB, cfg *config.Config) gin.HandlerFunc {
 		}
 		// Propagate the \Seen flag to IMAP in the background (best-effort) so app
 		// and server read-state stay in sync.
-		propagateSeen(db, cfg, userID, id, body.IsRead)
+		propagateSeen(db, cfg, pool, userID, id, body.IsRead)
 		c.JSON(http.StatusOK, gin.H{"is_read": body.IsRead})
 	}
 }
 
 // propagateSeen mirrors a read/unread change to the IMAP server asynchronously.
-func propagateSeen(db *store.DB, cfg *config.Config, userID, emailID string, seen bool) {
+func propagateSeen(db *store.DB, cfg *config.Config, pool *imapsync.Pool, userID, emailID string, seen bool) {
 	rec, err := db.GetEmailForUser(context.Background(), emailID, userID)
 	if err != nil {
 		return
@@ -323,7 +323,7 @@ func propagateSeen(db *store.DB, cfg *config.Config, userID, emailID string, see
 	go func() {
 		ctx, cancel := context.WithTimeout(context.Background(), 20*time.Second)
 		defer cancel()
-		if err := imapsync.SetSeen(ctx, account, string(password), rec.Folder, rec.IMAPUID, seen); err != nil {
+		if err := pool.SetSeen(ctx, account, string(password), rec.Folder, rec.IMAPUID, seen); err != nil {
 			slog.Warn("imap seen propagation failed", slog.String("email", emailID), slog.Any("error", err))
 		}
 	}()
@@ -476,7 +476,7 @@ func setCategoryHandler(db *store.DB) gin.HandlerFunc {
 }
 
 // moveEmailHandler moves an email to another IMAP folder (drag-and-drop).
-func moveEmailHandler(db *store.DB, cfg *config.Config) gin.HandlerFunc {
+func moveEmailHandler(db *store.DB, cfg *config.Config, pool *imapsync.Pool) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		userID := c.GetString("userID")
 		ctx := c.Request.Context()
@@ -511,7 +511,7 @@ func moveEmailHandler(db *store.DB, cfg *config.Config) gin.HandlerFunc {
 			c.JSON(http.StatusInternalServerError, errorResponse("internal_error", "failed to decrypt credentials"))
 			return
 		}
-		if err := imapsync.MoveMessage(ctx, account, string(password), rec.Folder, rec.IMAPUID, body.Folder); err != nil {
+		if err := pool.MoveMessage(ctx, account, string(password), rec.Folder, rec.IMAPUID, body.Folder); err != nil {
 			c.JSON(http.StatusBadGateway, errorResponse("move_failed", err.Error()))
 			return
 		}

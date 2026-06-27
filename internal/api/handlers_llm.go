@@ -93,6 +93,10 @@ func createLLMConfigHandler(db *store.DB, cfg *config.Config) gin.HandlerFunc {
 			return
 		}
 		dc := in.toDomain()
+		if err := validateLLMBaseURL(dc.BaseURL, cfg.LLMAllowPrivateHosts); err != nil {
+			c.JSON(http.StatusBadRequest, errorResponse("invalid_base_url", err.Error()))
+			return
+		}
 		if in.APIKey != "" {
 			enc, err := encryptKey(cfg, in.APIKey)
 			if err != nil {
@@ -118,6 +122,10 @@ func updateLLMConfigHandler(db *store.DB, cfg *config.Config) gin.HandlerFunc {
 			return
 		}
 		dc := in.toDomain()
+		if err := validateLLMBaseURL(dc.BaseURL, cfg.LLMAllowPrivateHosts); err != nil {
+			c.JSON(http.StatusBadRequest, errorResponse("invalid_base_url", err.Error()))
+			return
+		}
 		var apiKey []byte // nil keeps the stored key
 		if in.APIKey != "" {
 			enc, err := encryptKey(cfg, in.APIKey)
@@ -160,6 +168,10 @@ func testLLMConfigHandler(db *store.DB, cfg *config.Config) gin.HandlerFunc {
 		conf, err := db.GetLLMConfig(c.Request.Context(), c.GetString("userID"), c.Param("id"))
 		if err != nil {
 			c.JSON(http.StatusNotFound, errorResponse("not_found", "config not found"))
+			return
+		}
+		if err := validateLLMBaseURL(conf.BaseURL, cfg.LLMAllowPrivateHosts); err != nil {
+			c.JSON(http.StatusOK, gin.H{"ok": false, "error": err.Error()})
 			return
 		}
 		apiKey := ""

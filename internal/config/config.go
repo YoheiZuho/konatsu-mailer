@@ -18,6 +18,10 @@ type Config struct {
 	JWTSecret string
 	// AllowRegistration gates the public /auth/register endpoint.
 	AllowRegistration bool
+	// LLMAllowPrivateHosts permits LLM base_urls that resolve to private/loopback
+	// addresses (needed for local LLMs like Ollama). Link-local/metadata is always
+	// blocked. Set false for multi-tenant/public deployments.
+	LLMAllowPrivateHosts bool
 
 	// Web Push (VAPID)
 	VapidPublicKey  string
@@ -77,7 +81,8 @@ func Load() (*Config, error) {
 		DatabaseURL:        dbURL,
 		MasterEncKey:       encKey,
 		JWTSecret:          jwtSecret,
-		AllowRegistration:  envBool("ALLOW_REGISTRATION", true),
+		AllowRegistration:    envBool("ALLOW_REGISTRATION", true),
+		LLMAllowPrivateHosts: envBool("LLM_ALLOW_PRIVATE_HOSTS", true),
 		VapidPublicKey:     env("VAPID_PUBLIC_KEY", ""),
 		VapidPrivateKey:    env("VAPID_PRIVATE_KEY", ""),
 		VapidSubject:       env("VAPID_SUBJECT", "mailto:admin@example.com"),

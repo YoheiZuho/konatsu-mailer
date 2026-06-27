@@ -64,8 +64,12 @@ func main() {
 		}
 	}()
 
+	// Reusable IMAP connections for on-demand operations (body fetch, flags, move).
+	pool := imapsync.NewPool()
+	defer pool.Close()
+
 	gin.SetMode(gin.ReleaseMode)
-	r := api.NewRouter(cfg, db, hub, pipeline)
+	r := api.NewRouter(cfg, db, hub, pipeline, pool)
 
 	srv := &http.Server{
 		Addr:    ":8080",

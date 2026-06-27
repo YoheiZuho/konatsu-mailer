@@ -83,10 +83,13 @@ migrate -path ./migrations -database "$DATABASE_URL" down 1
 ロジック層（crypto / config / imapsync / llm / smtpsend / analysis / api / domain）の C0（命令網羅）ユニットテストがあります。
 
 ```bash
-make test         # go test -race
-make cover        # 各パッケージのカバレッジ%
-make cover-html   # coverage.out / coverage.html を生成（関数別カバレッジ表示）
+make test              # go test -race（C0 ユニット）
+make cover             # 各パッケージのカバレッジ%
+make cover-html        # coverage.out / coverage.html
+make test-integration  # 使い捨て PostgreSQL を立てて統合テスト（要 Docker）
 ```
+
+統合テストは `//go:build integration` タグ付きで、`TEST_DATABASE_URL` 未設定時はスキップされます。store の SQL（ユーザー/アカウント/メール/ラベル/未読数/フィルタ/LLM設定/プッシュ/本文キャッシュ）と、API の認証フロー＋SSRFガードを実 DB で検証します。
 
 > 純粋ロジック（分類・フィルタ評価・MIME 組立・JSON パース・JWT・暗号化など）を対象にしています。DB/IMAP/LLM への接続を伴う層（store・ハンドラの一部）は統合テスト向けで、現状の C0 では未カバーです。
 
@@ -127,7 +130,8 @@ node scripts/generate-icons.mjs   # public/icons/*.png を更新
 
 ## 実装状況メモ
 
-- **メール同期**: `internal/imapsync` が `main.go` から起動され、`is_active` な各アカウントに 1 goroutine を割り当てます。現状は **ポーリング方式（既定 30 秒間隔で最新メールを取得）** の MVP で、UID 競合は upsert で冪等化しています。接続は実装 TLS（`imap_use_tls=true`、993）／STARTTLS（false、143）の両対応。IMAP IDLE はフォローアップ予定。
+- **メール同期**: `internal/imapsync` が `main.go` から起動され、`is_active` な各アカウントに 1 goroutine を割り当てます。初回フルシンク後は **IMAP IDLE** で新着を待ち受け（INBOX）、約29分ごとにキープアライブ再同期。IDLE 非対応サーバーは自動でポーリングにフォールバック。接続は実装 TLS（993）／STARTTLS（143）両対応。
+- **接続の再利用**: 本文取得・既読反映・移動などのオンデマンド操作は `imapsync.Pool` が**アカウント単位で IMAP 接続を再利用**（毎回ダイヤルしない、ミューテックスで直列化、エラー時は再接続）。同期の IDLE 接続とは別系統。
 - **フォルダ**: 同期時に IMAP の `LIST`（SPECIAL-USE）で実フォルダを取得し、`accounts.folders` に保存。INBOX に加え特殊用途フォルダ（Sent / Junk(迷惑メール) / Trash / Drafts / Archive）を同期します。サイドバーは `GET /api/folders` の実フォルダを表示。任意のカスタムフォルダの本格同期はフォローアップ（現状は特殊用途＋INBOX）。
 - **LLM 解析パイプライン**: `internal/analysis` がワーカープール（`LLM_WORKERS`）で新着メールを解析。`internal/llm`（go-openai, OpenAI 互換）で要約・重要度(1-5)・ラベル・スパム判定を生成し、`emails.ai_summary/ai_priority` と `email_labels`(source=ai) に保存、`MAIL_ANALYZED` を配信。`prefs.ai_filters` のカテゴリは `shouldAnalyze` でスキップ（§6.3）。
 - **プッシュ送信**: 重要度 ≥ `NOTIFY_THRESHOLD` で `internal/push`（webpush-go/VAPID）が AI 要約付き通知を送信。`prefs.push_labels` を選択時はそのラベルが付いたメールのみ通知。404/410 の購読は自動削除。
@@ -139,5 +143,6 @@ node scripts/generate-icons.mjs   # public/icons/*.png を更新
 - **本文の文字化け対策**: IMAP 由来文字列は保存前に妥当な UTF-8 へサニタイズ（部分取得や非 UTF-8 charset による不正バイト列を除去）。
 - **送信**: `internal/smtpsend` は SMTPS（ポート 465 の実装 TLS）と STARTTLS（587）の両対応。
 - **リアルタイム**: `internal/ws` の Hub が `NEW_MAIL` / `SYNC_STATUS` を配信。`/api/ws` は `coder/websocket` でアップグレード。
+- **セキュリティ**: LLM `base_url` の SSRF ガード（リンクローカル/メタデータは常に拒否、private/loopback は `LLM_ALLOW_PRIVATE_HOSTS` で制御＝ローカル LLM 用に既定許可）、認証エンドポイントの IP 単位レート制限、メール HTML のサーバー側サニタイズ（bluemonday、クライアント DOMPurify との多層防御）。
 - **未実装（フォローアップ）**: 添付ファイルのダウンロード、本文の S3 保存、LLM プロバイダ単位のレート制御（トークンバケット）、カスタムフォルダのオンデマンド同期。
 - フロントエンドの API 契約は [詳細設計.md §7/§8](../詳細設計.md) が一次情報です。

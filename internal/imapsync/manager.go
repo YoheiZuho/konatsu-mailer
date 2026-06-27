@@ -130,8 +130,8 @@ func (m *SyncManager) runAccount(ctx context.Context, a domain.Account) {
 	}
 }
 
-// session connects, logs in, and polls for new mail until ctx is done or an
-// error occurs.
+// session connects, logs in, performs the initial sync, then waits for new mail
+// via IMAP IDLE (falling back to polling) until ctx is done or an error occurs.
 func (m *SyncManager) session(ctx context.Context, a domain.Account) error {
 	enc, err := crypto.NewAES256GCM(m.cfg.MasterEncKey)
 	if err != nil {
@@ -142,7 +142,21 @@ func (m *SyncManager) session(ctx context.Context, a domain.Account) error {
 		return fmt.Errorf("decrypt password: %w", err)
 	}
 
-	c, err := dial(a)
+	// Wake signal fired when the selected mailbox reports new messages (IDLE).
+	notify := make(chan struct{}, 1)
+	opts := clientOptions()
+	opts.UnilateralDataHandler = &imapclient.UnilateralDataHandler{
+		Mailbox: func(data *imapclient.UnilateralDataMailbox) {
+			if data.NumMessages != nil {
+				select {
+				case notify <- struct{}{}:
+				default:
+				}
+			}
+		},
+	}
+
+	c, err := dialWith(a, opts)
 	if err != nil {
 		m.broadcastStatus(a, "reconnecting")
 		return fmt.Errorf("dial: %w", err)
@@ -154,8 +168,7 @@ func (m *SyncManager) session(ctx context.Context, a domain.Account) error {
 	}
 	m.broadcastStatus(a, "connected")
 
-	// Discover the account's mailboxes (Inbox, Sent, Junk, Trash, ...) and cache
-	// them so the UI can show real IMAP folders.
+	// Discover the account's mailboxes and cache them for the sidebar.
 	mailboxes := listMailboxes(c)
 	if len(mailboxes) > 0 {
 		folders := make([]store.Folder, len(mailboxes))
@@ -166,20 +179,68 @@ func (m *SyncManager) session(ctx context.Context, a domain.Account) error {
 	}
 	syncSet := foldersToSync(mailboxes)
 
-	for {
-		for _, folder := range syncSet {
-			if ctx.Err() != nil {
-				return nil
-			}
-			if err := m.syncFolder(ctx, c, &a, folder); err != nil {
-				// Likely a dropped connection; reconnect from the supervisor.
-				return fmt.Errorf("sync %s: %w", folder, err)
-			}
+	if err := m.syncAll(ctx, c, &a, syncSet); err != nil {
+		return err
+	}
+	return m.idleLoop(ctx, c, &a, syncSet, notify)
+}
+
+// syncAll syncs every folder in the set once.
+func (m *SyncManager) syncAll(ctx context.Context, c *imapclient.Client, a *domain.Account, syncSet []string) error {
+	for _, folder := range syncSet {
+		if ctx.Err() != nil {
+			return nil
 		}
+		if err := m.syncFolder(ctx, c, a, folder); err != nil {
+			return fmt.Errorf("sync %s: %w", folder, err)
+		}
+	}
+	return nil
+}
+
+// idleLoop waits for INBOX changes via IMAP IDLE (with a periodic keepalive that
+// also re-syncs other folders), and re-syncs on wake. Falls back to polling if
+// the server does not support IDLE.
+func (m *SyncManager) idleLoop(ctx context.Context, c *imapclient.Client, a *domain.Account, syncSet []string, notify <-chan struct{}) error {
+	const idleRefresh = 29 * time.Minute
+	for {
+		if ctx.Err() != nil {
+			return nil
+		}
+		if _, err := c.Select(defaultFolder, nil).Wait(); err != nil {
+			return fmt.Errorf("select inbox: %w", err)
+		}
+		idleCmd, err := c.Idle()
+		if err != nil {
+			// IDLE unsupported → fall back to periodic polling.
+			return m.pollLoop(ctx, c, a, syncSet)
+		}
+		select {
+		case <-ctx.Done():
+			_ = idleCmd.Close()
+			return nil
+		case <-notify:
+		case <-time.After(idleRefresh):
+		}
+		if err := idleCmd.Close(); err != nil {
+			return fmt.Errorf("idle close: %w", err)
+		}
+		if err := m.syncAll(ctx, c, a, syncSet); err != nil {
+			return err
+		}
+	}
+}
+
+// pollLoop re-syncs every pollInterval (fallback when IDLE is unavailable).
+func (m *SyncManager) pollLoop(ctx context.Context, c *imapclient.Client, a *domain.Account, syncSet []string) error {
+	for {
 		select {
 		case <-ctx.Done():
 			return nil
 		case <-time.After(pollInterval):
+		}
+		if err := m.syncAll(ctx, c, a, syncSet); err != nil {
+			return err
 		}
 	}
 }
@@ -195,11 +256,17 @@ func clientOptions() *imapclient.Options {
 
 // dial opens an IMAP connection using implicit TLS or STARTTLS per the account.
 func dial(a domain.Account) (*imapclient.Client, error) {
+	return dialWith(a, clientOptions())
+}
+
+// dialWith opens an IMAP connection with custom client options (e.g. a
+// unilateral-data handler for IDLE).
+func dialWith(a domain.Account, opts *imapclient.Options) (*imapclient.Client, error) {
 	addr := fmt.Sprintf("%s:%d", a.IMAPHost, a.IMAPPort)
 	if a.IMAPUseTLS {
-		return imapclient.DialTLS(addr, clientOptions())
+		return imapclient.DialTLS(addr, opts)
 	}
-	return imapclient.DialStartTLS(addr, clientOptions())
+	return imapclient.DialStartTLS(addr, opts)
 }
 
 // syncFolder performs UID-based differential sync: the whole mailbox is synced

@@ -10,6 +10,7 @@ konatsu の設定は環境変数で行います。Docker Compose では `.env`�
 | `MASTER_ENC_KEY` | ✓ | （Compose に開発用既定値） | パスワード/API キー暗号化用の **32 バイト** 鍵（AES-256-GCM）。`openssl rand -hex 16` で生成。**変更すると既存の暗号化データを復号できなくなります。** |
 | `JWT_SECRET` | ✓ | （Compose に開発用既定値） | JWT 署名鍵。`openssl rand -base64 32` で生成。 |
 | `ALLOW_REGISTRATION` | | `true` | 新規登録の開放/停止。`false` で `POST /api/auth/register` が `403 registration_disabled` を返し、ログイン画面の「新規登録」リンクも非表示になります。 |
+| `LLM_ALLOW_PRIVATE_HOSTS` | | `true` | LLM `base_url` が private/loopback アドレスへ解決することを許可（ローカル LLM 用）。リンクローカル/メタデータ（169.254.x）は常に拒否。マルチテナント/公開環境では `false` を推奨。 |
 | `VAPID_PUBLIC_KEY` | | （空） | Web Push の VAPID 公開鍵。空ならプッシュ通知は無効。 |
 | `VAPID_PRIVATE_KEY` | | （空） | VAPID 秘密鍵。 |
 | `VAPID_SUBJECT` | | `mailto:admin@example.com` | VAPID の連絡先（`mailto:` または URL）。 |

@@ -1,30 +1,15 @@
 package imapsync
 
 import (
-	"context"
 	"fmt"
 
 	"github.com/emersion/go-imap/v2"
-
-	"github.com/yoheizuho/konatsu-mailer/internal/domain"
+	"github.com/emersion/go-imap/v2/imapclient"
 )
 
-// SetSeen propagates a read/unread change to the IMAP server by adding or
-// removing the \Seen flag on a message UID. Used to keep app and server state
-// in sync. Opens a short-lived connection (best-effort).
-func SetSeen(ctx context.Context, a domain.Account, password, folder string, uid int64, seen bool) error {
-	c, err := dial(a)
-	if err != nil {
-		return fmt.Errorf("dial: %w", err)
-	}
-	defer c.Close()
-	if err := c.Login(a.AuthUser, password).Wait(); err != nil {
-		return fmt.Errorf("login: %w", err)
-	}
-	if _, err := c.Select(folder, nil).Wait(); err != nil {
-		return fmt.Errorf("select: %w", err)
-	}
-
+// setSeenOnConn adds/removes the \Seen flag on a UID using a folder-selected
+// connection.
+func setSeenOnConn(c *imapclient.Client, uid int64, seen bool) error {
 	op := imap.StoreFlagsDel
 	if seen {
 		op = imap.StoreFlagsAdd
@@ -40,19 +25,8 @@ func SetSeen(ctx context.Context, a domain.Account, password, folder string, uid
 	return nil
 }
 
-// MoveMessage moves a message (by UID) from srcFolder to destFolder via IMAP.
-func MoveMessage(ctx context.Context, a domain.Account, password, srcFolder string, uid int64, destFolder string) error {
-	c, err := dial(a)
-	if err != nil {
-		return fmt.Errorf("dial: %w", err)
-	}
-	defer c.Close()
-	if err := c.Login(a.AuthUser, password).Wait(); err != nil {
-		return fmt.Errorf("login: %w", err)
-	}
-	if _, err := c.Select(srcFolder, nil).Wait(); err != nil {
-		return fmt.Errorf("select: %w", err)
-	}
+// moveOnConn moves a UID to destFolder using a folder-selected connection.
+func moveOnConn(c *imapclient.Client, uid int64, destFolder string) error {
 	if _, err := c.Move(imap.UIDSetNum(imap.UID(uid)), destFolder).Wait(); err != nil {
 		return fmt.Errorf("move: %w", err)
 	}
