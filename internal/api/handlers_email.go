@@ -59,9 +59,14 @@ func listEmailsHandler(db *store.DB) gin.HandlerFunc {
 		if q := strings.TrimSpace(c.Query("q")); q != "" {
 			args = append(args, q)
 			idx := len(args)
+			// Full-text (tsvector, word/phrase) OR substring (ILIKE, covers CJK).
 			where = append(where, fmt.Sprintf(
-				"(e.subject ILIKE '%%'||$%d||'%%' OR e.sender_addr ILIKE '%%'||$%d||'%%' OR e.sender_name ILIKE '%%'||$%d||'%%')",
-				idx, idx, idx))
+				"(e.search_tsv @@ websearch_to_tsquery('simple', $%d)"+
+					" OR e.subject ILIKE '%%'||$%d||'%%'"+
+					" OR e.sender_addr ILIKE '%%'||$%d||'%%'"+
+					" OR e.sender_name ILIKE '%%'||$%d||'%%'"+
+					" OR e.body_preview ILIKE '%%'||$%d||'%%')",
+				idx, idx, idx, idx, idx))
 		}
 		if cursor := c.Query("cursor"); cursor != "" {
 			if t, err := time.Parse(time.RFC3339, cursor); err == nil {

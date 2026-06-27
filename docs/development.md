@@ -78,6 +78,18 @@ migrate -path ./migrations -database "$DATABASE_URL" down 1
 
 > 本番用の distroless バックエンドイメージには `migrate` バイナリは含まれません（自動適用のため不要）。
 
+## テスト・カバレッジ
+
+ロジック層（crypto / config / imapsync / llm / smtpsend / analysis / api / domain）の C0（命令網羅）ユニットテストがあります。
+
+```bash
+make test         # go test -race
+make cover        # 各パッケージのカバレッジ%
+make cover-html   # coverage.out / coverage.html を生成（関数別カバレッジ表示）
+```
+
+> 純粋ロジック（分類・フィルタ評価・MIME 組立・JSON パース・JWT・暗号化など）を対象にしています。DB/IMAP/LLM への接続を伴う層（store・ハンドラの一部）は統合テスト向けで、現状の C0 では未カバーです。
+
 ## ビルド・検査
 
 ```bash
