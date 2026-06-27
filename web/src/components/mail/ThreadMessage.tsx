@@ -73,12 +73,10 @@ export function ThreadMessage({
         className="mb-3 flex w-full items-center gap-3 rounded-lg border border-line px-4 py-3 text-left transition hover:bg-hover"
       >
         <Avatar name={senderName} seed={message.from.addr} size={32} />
-        <div className="min-w-0 flex-1">
-          <span className="text-[13.5px] font-semibold text-content">{senderName}</span>
+        <div className="flex min-w-0 flex-1 items-center gap-2">
+          <span className="flex-none text-[13.5px] font-semibold text-content">{senderName}</span>
           {message.text && (
-            <span className="ml-2 truncate text-[13px] text-content-sub">
-              {message.text.slice(0, 80)}
-            </span>
+            <span className="min-w-0 flex-1 truncate text-[13px] text-content-sub">{message.text}</span>
           )}
         </div>
         <span className="flex-none text-[12px] text-content-sub">{formatFullDate(message.date)}</span>
@@ -145,7 +143,7 @@ export function ThreadMessage({
               原文を表示
             </button>
           </div>
-          <div className="whitespace-pre-wrap text-[14.5px] leading-relaxed text-content">{translated}</div>
+          <div className="whitespace-pre-wrap break-words text-[14.5px] leading-relaxed text-content">{translated}</div>
         </div>
       ) : (
         <MessageBody html={message.html} text={message.text} />
@@ -183,7 +181,7 @@ function MessageBody({ html, text }: { html?: string | null; text?: string | nul
         )}
         <div
           ref={containerRef}
-          className="email-html max-w-none text-[14.5px] leading-relaxed text-content [&_a]:text-brand-strong [&_a]:underline"
+          className="email-html max-w-none break-words text-[14.5px] leading-relaxed text-content [&_a]:text-brand-strong [&_a]:underline [&_img]:max-w-full"
           // Content is sanitized by DOMPurify in sanitizeEmailHtml().
           dangerouslySetInnerHTML={{ __html: safeHtml }}
         />
@@ -192,7 +190,7 @@ function MessageBody({ html, text }: { html?: string | null; text?: string | nul
   }
 
   return (
-    <div className="whitespace-pre-wrap text-[14.5px] leading-relaxed text-content">
+    <div className="whitespace-pre-wrap break-words text-[14.5px] leading-relaxed text-content">
       {text || '(本文がありません)'}
     </div>
   );
