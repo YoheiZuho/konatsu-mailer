@@ -47,7 +47,7 @@ export function TopBar() {
         <div className="hidden text-[20px] font-semibold text-content sm:block">konatsu</div>
       </div>
 
-      <label className="flex h-[46px] max-w-[660px] flex-1 items-center gap-3 rounded-3xl bg-surface-sub px-4 transition focus-within:bg-surface focus-within:shadow-[0_1px_5px_rgba(0,0,0,.13)]">
+      <label className="flex h-[46px] min-w-0 max-w-[660px] flex-1 items-center gap-2 rounded-3xl bg-surface-sub px-3 transition focus-within:bg-surface focus-within:shadow-[0_1px_5px_rgba(0,0,0,.13)] sm:gap-3 sm:px-4">
         <Icon name="search" size={22} className="text-content-sub" />
         <input
           value={local}
