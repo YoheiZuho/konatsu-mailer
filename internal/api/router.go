@@ -11,7 +11,7 @@ import (
 )
 
 // NewRouter creates the main Gin router with all handlers.
-func NewRouter(cfg *config.Config, db *store.DB, hub *ws.Hub) *gin.Engine {
+func NewRouter(cfg *config.Config, db *store.DB, hub *ws.Hub, analyzer Enqueuer) *gin.Engine {
 	r := gin.New()
 	r.Use(gin.Recovery())
 	r.Use(corsMiddleware())
@@ -42,7 +42,7 @@ func NewRouter(cfg *config.Config, db *store.DB, hub *ws.Hub) *gin.Engine {
 			auth.PATCH("/emails/:id/read", patchReadHandler(db, cfg))
 			auth.PATCH("/emails/:id/star", patchStarHandler(db))
 			auth.POST("/emails/:id/labels", assignLabelsHandler(db))
-			auth.POST("/emails/:id/reanalyze", reanalyzeHandler(db, cfg))
+			auth.POST("/emails/:id/reanalyze", reanalyzeHandler(db, analyzer))
 
 			auth.GET("/labels", listLabelsHandler(db))
 			auth.POST("/labels", createLabelHandler(db))

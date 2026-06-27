@@ -35,15 +35,21 @@ type Broadcaster interface {
 	Broadcast(userID string, msg any)
 }
 
-// SyncManager supervises one worker goroutine per active account.
-type SyncManager struct {
-	db  *store.DB
-	cfg *config.Config
-	hub Broadcaster
+// Analyzer enqueues newly-received mail for LLM analysis.
+type Analyzer interface {
+	Enqueue(emailID, userID, accountID domain.UUID)
 }
 
-func NewManager(db *store.DB, cfg *config.Config, hub Broadcaster) *SyncManager {
-	return &SyncManager{db: db, cfg: cfg, hub: hub}
+// SyncManager supervises one worker goroutine per active account.
+type SyncManager struct {
+	db       *store.DB
+	cfg      *config.Config
+	hub      Broadcaster
+	analyzer Analyzer
+}
+
+func NewManager(db *store.DB, cfg *config.Config, hub Broadcaster, analyzer Analyzer) *SyncManager {
+	return &SyncManager{db: db, cfg: cfg, hub: hub, analyzer: analyzer}
 }
 
 // Start blocks until ctx is cancelled, periodically reconciling the set of
@@ -266,8 +272,13 @@ func (m *SyncManager) syncFolder(ctx context.Context, c *imapclient.Client, a *d
 		}
 		if inserted {
 			newCount++
+			moved := false
 			if len(filters) > 0 {
-				m.applyFilters(ctx, c, a, id, email, filters)
+				moved = m.applyFilters(ctx, c, a, id, email, filters)
+			}
+			// Queue for AI analysis (incoming mail only, and not relocated away).
+			if !moved && folder == defaultFolder && m.analyzer != nil {
+				m.analyzer.Enqueue(id, a.UserID, a.ID)
 			}
 			m.hub.Broadcast(string(a.UserID), event("NEW_MAIL", map[string]any{
 				"account_id": a.ID,

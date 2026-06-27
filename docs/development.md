@@ -117,12 +117,15 @@ node scripts/generate-icons.mjs   # public/icons/*.png を更新
 
 - **メール同期**: `internal/imapsync` が `main.go` から起動され、`is_active` な各アカウントに 1 goroutine を割り当てます。現状は **ポーリング方式（既定 30 秒間隔で最新メールを取得）** の MVP で、UID 競合は upsert で冪等化しています。接続は実装 TLS（`imap_use_tls=true`、993）／STARTTLS（false、143）の両対応。IMAP IDLE はフォローアップ予定。
 - **フォルダ**: 同期時に IMAP の `LIST`（SPECIAL-USE）で実フォルダを取得し、`accounts.folders` に保存。INBOX に加え特殊用途フォルダ（Sent / Junk(迷惑メール) / Trash / Drafts / Archive）を同期します。サイドバーは `GET /api/folders` の実フォルダを表示。任意のカスタムフォルダの本格同期はフォローアップ（現状は特殊用途＋INBOX）。
-- **AI 解析フィルタ**: `prefs.ai_filters`（プロモーション/ソーシャル/ニュースレター/自動送信）を設定画面で制御・永続化（`PATCH /me/preferences`）。LLM 解析パイプライン実装時に §6.3 の `shouldAnalyze` がこれを参照します。
+- **LLM 解析パイプライン**: `internal/analysis` がワーカープール（`LLM_WORKERS`）で新着メールを解析。`internal/llm`（go-openai, OpenAI 互換）で要約・重要度(1-5)・ラベル・スパム判定を生成し、`emails.ai_summary/ai_priority` と `email_labels`(source=ai) に保存、`MAIL_ANALYZED` を配信。`prefs.ai_filters` のカテゴリは `shouldAnalyze` でスキップ（§6.3）。
+- **プッシュ送信**: 重要度 ≥ `NOTIFY_THRESHOLD` で `internal/push`（webpush-go/VAPID）が AI 要約付き通知を送信。`prefs.push_labels` を選択時はそのラベルが付いたメールのみ通知。404/410 の購読は自動削除。
+- **AI 下書き/返信案**: `POST /api/ai/draft` が既定 LLM 接続でストリーミング生成（SSE）。
+- **LLM 接続設定 / ラベル**: `/api/llm-configs`（CRUD＋`/test`）と `/api/labels`（CRUD）を実装。API キーは AES-256-GCM で暗号化保存。
 - **カテゴリ分類**: 同期時に分類ヘッダ（List-Id / List-Unsubscribe / Precedence / Auto-Submitted）と送信元から `emails.category`（primary/promotions/social/newsletters）をヒューリスティック判定。受信トレイの**カテゴリタブ**（メイン/プロモーション/ソーシャル/ニュースレター）で絞り込み。
 - **メッセージフィルタ（自動分類）**: `filters` テーブル＋`GET/POST/PATCH/DELETE /api/filters`。新着メール受信時に条件（件名/差出人/宛先/Cc/本文・含む/一致/前方一致等、すべて/いずれか）を評価し、アクション（フォルダ移動=IMAP MOVE / ラベル付与 / 既読化=IMAP `\Seen` / スター / カテゴリ設定）を適用。設定→「フィルター」で管理。
 - **同期件数**: 1 フォルダあたり最新 300 件まで取得（`imapsync.initialFetch`）。一覧は keyset カーソルで無限スクロール。
 - **本文の文字化け対策**: IMAP 由来文字列は保存前に妥当な UTF-8 へサニタイズ（部分取得や非 UTF-8 charset による不正バイト列を除去）。
 - **送信**: `internal/smtpsend` は SMTPS（ポート 465 の実装 TLS）と STARTTLS（587）の両対応。
 - **リアルタイム**: `internal/ws` の Hub が `NEW_MAIL` / `SYNC_STATUS` を配信。`/api/ws` は `coder/websocket` でアップグレード。
-- **未実装（フォローアップ）**: LLM 解析パイプライン（要約・ラベル・重要度）、手動ラベル付与、IMAP フラグの逆同期（既読の IMAP 反映）、添付ダウンロード。これらが無効でも閲覧・送信・同期は動作します。
+- **未実装（フォローアップ）**: 添付ファイルのダウンロード、本文の S3 保存、LLM プロバイダ単位のレート制御（トークンバケット）、カスタムフォルダのオンデマンド同期。
 - フロントエンドの API 契約は [詳細設計.md §7/§8](../詳細設計.md) が一次情報です。

@@ -29,13 +29,12 @@ export function NotificationSettings() {
     setBusy(true);
     setError(null);
     try {
-      const ok = await subscribeToPush();
-      setPermission(notificationPermission());
-      if (ok) setDone(true);
-      else setError('通知が許可されませんでした。ブラウザの設定をご確認ください。');
+      await subscribeToPush();
+      setDone(true);
     } catch (e) {
       setError((e as Error).message || '購読に失敗しました。');
     } finally {
+      setPermission(notificationPermission());
       setBusy(false);
     }
   };

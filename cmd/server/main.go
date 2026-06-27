@@ -11,9 +11,11 @@ import (
 
 	"github.com/gin-gonic/gin"
 
+	"github.com/yoheizuho/konatsu-mailer/internal/analysis"
 	"github.com/yoheizuho/konatsu-mailer/internal/api"
 	"github.com/yoheizuho/konatsu-mailer/internal/config"
 	"github.com/yoheizuho/konatsu-mailer/internal/imapsync"
+	"github.com/yoheizuho/konatsu-mailer/internal/push"
 	"github.com/yoheizuho/konatsu-mailer/internal/store"
 	"github.com/yoheizuho/konatsu-mailer/internal/ws"
 )
@@ -45,11 +47,17 @@ func main() {
 	rootCtx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
 	defer stop()
 
-	// Realtime hub + IMAP sync workers.
+	// Realtime hub.
 	hub := ws.NewHub()
 	go hub.Run(rootCtx)
 
-	syncMgr := imapsync.NewManager(db, cfg, hub)
+	// LLM analysis pipeline + Web Push.
+	pusher := push.NewPusher(cfg.VapidPublicKey, cfg.VapidPrivateKey, cfg.VapidSubject)
+	pipeline := analysis.New(db, cfg, hub, pusher)
+	pipeline.Start(rootCtx)
+
+	// IMAP sync workers (enqueue new mail for analysis).
+	syncMgr := imapsync.NewManager(db, cfg, hub, pipeline)
 	go func() {
 		if err := syncMgr.Start(rootCtx); err != nil {
 			logger.Error("sync manager stopped", slog.Any("error", err))
@@ -57,7 +65,7 @@ func main() {
 	}()
 
 	gin.SetMode(gin.ReleaseMode)
-	r := api.NewRouter(cfg, db, hub)
+	r := api.NewRouter(cfg, db, hub, pipeline)
 
 	srv := &http.Server{
 		Addr:    ":8080",

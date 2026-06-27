@@ -42,8 +42,10 @@ func categorize(headerBlob, sender string) string {
 
 // applyFilters evaluates a user's filters against a newly-synced email and
 // performs the matching actions (move/label/read/star/category). The IMAP
-// client must be selected on the email's folder.
-func (m *SyncManager) applyFilters(ctx context.Context, c *imapclient.Client, a *domain.Account, id domain.UUID, email *domain.Email, filters []domain.Filter) {
+// client must be selected on the email's folder. Returns true if the message
+// was moved out of the current folder.
+func (m *SyncManager) applyFilters(ctx context.Context, c *imapclient.Client, a *domain.Account, id domain.UUID, email *domain.Email, filters []domain.Filter) bool {
+	relocated := false
 	for _, f := range filters {
 		if !filterMatches(f, email) {
 			continue
@@ -64,7 +66,7 @@ func (m *SyncManager) applyFilters(ctx context.Context, c *imapclient.Client, a 
 				_ = m.db.DeleteEmail(ctx, id)
 				moved = true
 			case "add_label":
-				if labelID, err := m.db.GetOrCreateLabel(ctx, a.ID, action.Value); err == nil {
+				if labelID, _, err := m.db.GetOrCreateLabel(ctx, a.ID, action.Value, false); err == nil {
 					_ = m.db.LinkEmailLabel(ctx, id, labelID, "filter")
 				}
 			case "mark_read":
@@ -81,9 +83,11 @@ func (m *SyncManager) applyFilters(ctx context.Context, c *imapclient.Client, a 
 			}
 		}
 		if moved {
-			return // message relocated; stop processing further filters
+			relocated = true
+			break // message relocated; stop processing further filters
 		}
 	}
+	return relocated
 }
 
 // filterMatches evaluates a filter's conditions (all/any) against an email.

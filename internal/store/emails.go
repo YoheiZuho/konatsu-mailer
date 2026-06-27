@@ -63,6 +63,7 @@ type EmailRecord struct {
 	SenderAddr  string
 	Recipients  domain.Recipients
 	BodyPreview string
+	Category    string
 	DateSent    time.Time
 	IsRead      bool
 	IsStarred   bool
@@ -72,7 +73,7 @@ type EmailRecord struct {
 
 const emailRecordSelect = `e.id, e.account_id, e.thread_id, e.folder, e.imap_uid,
 	e.message_id, e.subject, e.sender_name, e.sender_addr, e.recipients,
-	e.body_preview, e.date_sent, e.is_read, e.is_starred, e.ai_summary, e.ai_priority`
+	e.body_preview, e.category, e.date_sent, e.is_read, e.is_starred, e.ai_summary, e.ai_priority`
 
 func scanEmailRecord(row interface {
 	Scan(dest ...any) error
@@ -81,7 +82,7 @@ func scanEmailRecord(row interface {
 	err := row.Scan(
 		&e.ID, &e.AccountID, &e.ThreadID, &e.Folder, &e.IMAPUID,
 		&e.MessageID, &e.Subject, &e.SenderName, &e.SenderAddr, &e.Recipients,
-		&e.BodyPreview, &e.DateSent, &e.IsRead, &e.IsStarred, &e.AISummary, &e.AIPriority,
+		&e.BodyPreview, &e.Category, &e.DateSent, &e.IsRead, &e.IsStarred, &e.AISummary, &e.AIPriority,
 	)
 	return e, err
 }
@@ -145,15 +146,30 @@ func (db *DB) SetCategoryByID(ctx context.Context, id domain.UUID, category stri
 	return err
 }
 
-// GetOrCreateLabel returns the id of a label by name within an account,
-// creating it if necessary.
-func (db *DB) GetOrCreateLabel(ctx context.Context, accountID domain.UUID, name string) (domain.UUID, error) {
+// GetOrCreateLabel returns the id and color of a label by name within an
+// account, creating it if necessary. isSystem marks AI-assigned labels.
+func (db *DB) GetOrCreateLabel(ctx context.Context, accountID domain.UUID, name string, isSystem bool) (domain.UUID, string, error) {
 	var id domain.UUID
+	var color string
 	err := db.Pool.QueryRow(ctx,
-		`INSERT INTO labels (account_id, name) VALUES ($1,$2)
+		`INSERT INTO labels (account_id, name, is_system) VALUES ($1,$2,$3)
 		 ON CONFLICT (account_id, name) DO UPDATE SET name=EXCLUDED.name
-		 RETURNING id`, accountID, name).Scan(&id)
-	return id, err
+		 RETURNING id, color`, accountID, name, isSystem).Scan(&id, &color)
+	return id, color, err
+}
+
+// UpdateEmailAnalysis stores LLM results on an email.
+func (db *DB) UpdateEmailAnalysis(ctx context.Context, id domain.UUID, summary string, priority int, status string) error {
+	_, err := db.Pool.Exec(ctx,
+		`UPDATE emails SET ai_summary=$2, ai_priority=$3, analysis_status=$4 WHERE id=$1`,
+		id, summary, priority, status)
+	return err
+}
+
+// SetAnalysisStatus updates only the analysis status (e.g. skipped/error).
+func (db *DB) SetAnalysisStatus(ctx context.Context, id domain.UUID, status string) error {
+	_, err := db.Pool.Exec(ctx, `UPDATE emails SET analysis_status=$2 WHERE id=$1`, id, status)
+	return err
 }
 
 // LinkEmailLabel attaches a label to an email (idempotent).

@@ -381,9 +381,25 @@ func assignLabelsHandler(db *store.DB) gin.HandlerFunc {
 	}
 }
 
-func reanalyzeHandler(db *store.DB, cfg *config.Config) gin.HandlerFunc {
+// Enqueuer queues an email for (re)analysis by the LLM pipeline.
+type Enqueuer interface {
+	Enqueue(emailID, userID, accountID domain.UUID)
+}
+
+func reanalyzeHandler(db *store.DB, analyzer Enqueuer) gin.HandlerFunc {
 	return func(c *gin.Context) {
-		// LLM analysis pipeline is not yet wired; accept and no-op.
+		userID := c.GetString("userID")
+		id := c.Param("id")
+		ctx := c.Request.Context()
+		rec, err := db.GetEmailForUser(ctx, id, userID)
+		if err != nil {
+			c.JSON(http.StatusNotFound, errorResponse("not_found", "email not found"))
+			return
+		}
+		_ = db.SetAnalysisStatus(ctx, rec.ID, "pending")
+		if analyzer != nil {
+			analyzer.Enqueue(rec.ID, domain.UUID(userID), rec.AccountID)
+		}
 		c.JSON(http.StatusAccepted, gin.H{"status": "pending"})
 	}
 }

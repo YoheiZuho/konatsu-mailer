@@ -20,17 +20,26 @@ function urlBase64ToUint8Array(base64: string): Uint8Array<ArrayBuffer> {
 }
 
 /**
- * Request notification permission and subscribe to push. Resolves true on a
- * successful (or already-existing) subscription.
+ * Request notification permission and subscribe to push. Throws an Error with a
+ * specific, user-facing message on each distinct failure (so the UI can explain
+ * what went wrong — e.g. VAPID not configured vs. permission denied).
  */
-export async function subscribeToPush(): Promise<boolean> {
-  if (!pushSupported()) return false;
+export async function subscribeToPush(): Promise<void> {
+  if (!pushSupported()) {
+    throw new Error('このブラウザはプッシュ通知に対応していません。');
+  }
 
   const permission = await Notification.requestPermission();
-  if (permission !== 'granted') return false;
+  if (permission !== 'granted') {
+    throw new Error('通知が許可されませんでした。ブラウザの設定で通知を許可してください。');
+  }
 
   const { public_key } = await api.get<{ public_key: string }>('/push/vapid-public-key');
-  if (!public_key) return false;
+  if (!public_key) {
+    throw new Error(
+      'サーバーでプッシュ通知（VAPID鍵）が未設定です。VAPID_PUBLIC_KEY / VAPID_PRIVATE_KEY を設定してください。',
+    );
+  }
 
   const registration = await navigator.serviceWorker.ready;
   const existing = await registration.pushManager.getSubscription();
@@ -48,7 +57,6 @@ export async function subscribeToPush(): Promise<boolean> {
     auth: json.keys?.auth,
     user_agent: navigator.userAgent,
   });
-  return true;
 }
 
 export function notificationPermission(): NotificationPermission | 'unsupported' {
