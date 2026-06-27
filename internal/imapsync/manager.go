@@ -24,7 +24,6 @@ import (
 
 const (
 	defaultFolder  = "INBOX"
-	initialFetch   = 300 // newest N messages fetched per folder per poll
 	pollInterval   = 30 * time.Second
 	reconcileEvery = 30 * time.Second
 	maxBackoff     = 5 * time.Minute
@@ -203,9 +202,9 @@ func dial(a domain.Account) (*imapclient.Client, error) {
 	return imapclient.DialStartTLS(addr, clientOptions())
 }
 
-// syncFolder fetches the newest messages from a folder and upserts them. The
-// ON CONFLICT upsert makes re-fetching the same window idempotent, so new mail
-// is picked up on each poll without UID bookkeeping.
+// syncFolder performs UID-based differential sync: the whole mailbox is synced
+// the first time (in batches), then only messages with a UID greater than the
+// last seen one are fetched on each poll. There is no message-count cap.
 func (m *SyncManager) syncFolder(ctx context.Context, c *imapclient.Client, a *domain.Account, folder string) error {
 	selectData, err := c.Select(folder, nil).Wait()
 	if err != nil {
@@ -215,12 +214,15 @@ func (m *SyncManager) syncFolder(ctx context.Context, c *imapclient.Client, a *d
 		return nil
 	}
 
-	start := uint32(1)
-	if selectData.NumMessages > initialFetch {
-		start = selectData.NumMessages - initialFetch + 1
+	if a.SyncState == nil {
+		a.SyncState = domain.SyncState{}
 	}
-	seqSet := imap.SeqSet{}
-	seqSet.AddRange(start, selectData.NumMessages)
+	fs := a.SyncState[folder]
+	// A changed UIDVALIDITY invalidates stored UIDs → full re-sync.
+	if fs.UIDValidity != 0 && fs.UIDValidity != selectData.UIDValidity {
+		fs.LastUID = 0
+	}
+	fs.UIDValidity = selectData.UIDValidity
 
 	section := &imap.FetchItemBodySection{
 		Specifier: imap.PartSpecifierText,
@@ -241,59 +243,100 @@ func (m *SyncManager) syncFolder(ctx context.Context, c *imapclient.Client, a *d
 		BodySection:  []*imap.FetchItemBodySection{section, headerSection},
 	}
 
-	msgs, err := c.Fetch(seqSet, opts).Collect()
-	if err != nil {
-		return fmt.Errorf("fetch: %w", err)
-	}
-
 	// Filters run only on incoming mail (INBOX), like conventional clients.
 	var filters []domain.Filter
 	if folder == defaultFolder {
 		filters, _ = m.db.EnabledFiltersForUser(ctx, a.UserID)
 	}
 
-	var newCount int
-	for _, msg := range msgs {
-		if ctx.Err() != nil {
-			return nil
-		}
-		preview := previewText(msg.FindBodySection(section))
-		email := buildEmail(a, folder, msg, preview)
-		email.Category = categorize(string(msg.FindBodySection(headerSection)), email.SenderAddr)
+	// On the initial full sync we do NOT auto-analyze the whole backlog (it would
+	// flood the queue and incur large LLM cost); only newly-arriving mail is
+	// analyzed. Users can run "AIで再解析" on older messages on demand.
+	analyzeNew := fs.LastUID != 0
 
-		threadID, err := m.db.UpsertThread(ctx, a.ID, threadKey(email), email.Subject, email.DateSent)
-		if err == nil {
-			email.ThreadID = &threadID
+	newCount := 0
+	maxUID := fs.LastUID
+	process := func(msgs []*imapclient.FetchMessageBuffer) error {
+		for _, msg := range msgs {
+			if ctx.Err() != nil {
+				return ctx.Err()
+			}
+			if uint32(msg.UID) > maxUID {
+				maxUID = uint32(msg.UID)
+			}
+			preview := previewText(msg.FindBodySection(section))
+			email := buildEmail(a, folder, msg, preview)
+			email.Category = categorize(string(msg.FindBodySection(headerSection)), email.SenderAddr)
+
+			threadID, err := m.db.UpsertThread(ctx, a.ID, threadKey(email), email.Subject, email.DateSent)
+			if err == nil {
+				email.ThreadID = &threadID
+			}
+			id, inserted, err := m.db.UpsertEmail(ctx, email)
+			if err != nil {
+				slog.Warn("imapsync: upsert email", slog.Any("error", err))
+				continue
+			}
+			if inserted {
+				newCount++
+				moved := false
+				if len(filters) > 0 {
+					moved = m.applyFilters(ctx, c, a, id, email, filters)
+				}
+				if analyzeNew && !moved && folder == defaultFolder && m.analyzer != nil {
+					m.analyzer.Enqueue(id, a.UserID, a.ID)
+				}
+				m.hub.Broadcast(string(a.UserID), event("NEW_MAIL", map[string]any{
+					"account_id": a.ID, "email_id": id,
+				}))
+			}
 		}
-		id, inserted, err := m.db.UpsertEmail(ctx, email)
+		return nil
+	}
+
+	if fs.LastUID == 0 {
+		// Initial full sync: fetch every message, batched by sequence number to
+		// bound memory/latency on large mailboxes.
+		const batch = 500
+		for start := uint32(1); start <= selectData.NumMessages; start += batch {
+			end := start + batch - 1
+			if end > selectData.NumMessages {
+				end = selectData.NumMessages
+			}
+			seqSet := imap.SeqSet{}
+			seqSet.AddRange(start, end)
+			msgs, err := c.Fetch(seqSet, opts).Collect()
+			if err != nil {
+				return fmt.Errorf("fetch: %w", err)
+			}
+			if err := process(msgs); err != nil {
+				return nil
+			}
+		}
+	} else {
+		// Incremental: only UIDs greater than the last seen one.
+		uidNext := uint32(selectData.UIDNext)
+		if uidNext != 0 && fs.LastUID+1 >= uidNext {
+			return nil // nothing new
+		}
+		uidSet := imap.UIDSet{}
+		uidSet.AddRange(imap.UID(fs.LastUID+1), 0) // (last+1):*
+		msgs, err := c.Fetch(uidSet, opts).Collect()
 		if err != nil {
-			slog.Warn("imapsync: upsert email", slog.Any("error", err))
-			continue
+			return fmt.Errorf("fetch: %w", err)
 		}
-		if inserted {
-			newCount++
-			moved := false
-			if len(filters) > 0 {
-				moved = m.applyFilters(ctx, c, a, id, email, filters)
-			}
-			// Queue for AI analysis (incoming mail only, and not relocated away).
-			if !moved && folder == defaultFolder && m.analyzer != nil {
-				m.analyzer.Enqueue(id, a.UserID, a.ID)
-			}
-			m.hub.Broadcast(string(a.UserID), event("NEW_MAIL", map[string]any{
-				"account_id": a.ID,
-				"email_id":   id,
-			}))
+		if err := process(msgs); err != nil {
+			return nil
 		}
 	}
 
-	// Persist UID validity so a future change can trigger a full re-sync.
-	a.SyncState = domain.SyncState{folder: domain.FolderSyncState{UIDValidity: selectData.UIDValidity}}
+	fs.LastUID = maxUID
+	a.SyncState[folder] = fs
 	_ = m.db.UpdateSyncState(ctx, a.ID, a.SyncState)
 
 	if newCount > 0 {
 		slog.Info("imapsync: new messages",
-			slog.String("account", a.Email), slog.Int("count", newCount))
+			slog.String("account", a.Email), slog.String("folder", folder), slog.Int("count", newCount))
 	}
 	return nil
 }

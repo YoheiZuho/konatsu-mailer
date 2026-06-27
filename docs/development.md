@@ -135,7 +135,7 @@ node scripts/generate-icons.mjs   # public/icons/*.png を更新
 - **LLM 接続設定 / ラベル**: `/api/llm-configs`（CRUD＋`/test`）と `/api/labels`（CRUD）を実装。API キーは AES-256-GCM で暗号化保存。
 - **カテゴリ分類**: 同期時に分類ヘッダ（List-Id / List-Unsubscribe / Precedence / Auto-Submitted）と送信元から `emails.category`（primary/promotions/social/newsletters）をヒューリスティック判定。受信トレイの**カテゴリタブ**（メイン/プロモーション/ソーシャル/ニュースレター）で絞り込み。
 - **メッセージフィルタ（自動分類）**: `filters` テーブル＋`GET/POST/PATCH/DELETE /api/filters`。新着メール受信時に条件（件名/差出人/宛先/Cc/本文・含む/一致/前方一致等、すべて/いずれか）を評価し、アクション（フォルダ移動=IMAP MOVE / ラベル付与 / 既読化=IMAP `\Seen` / スター / カテゴリ設定）を適用。設定→「フィルター」で管理。
-- **同期件数**: 1 フォルダあたり最新 300 件まで取得（`imapsync.initialFetch`）。一覧は keyset カーソルで無限スクロール。
+- **同期方式（差分）**: 初回はフォルダの全メッセージを 500 件ずつバッチ取得し、以降は **前回取得した最大 UID より大きい UID のみ**を取得します（`sync_state` に `uidvalidity`/`last_uid` を保持。UIDVALIDITY 変化時は全再同期）。件数上限はありません。一覧は keyset カーソルで無限スクロール。
 - **本文の文字化け対策**: IMAP 由来文字列は保存前に妥当な UTF-8 へサニタイズ（部分取得や非 UTF-8 charset による不正バイト列を除去）。
 - **送信**: `internal/smtpsend` は SMTPS（ポート 465 の実装 TLS）と STARTTLS（587）の両対応。
 - **リアルタイム**: `internal/ws` の Hub が `NEW_MAIL` / `SYNC_STATUS` を配信。`/api/ws` は `coder/websocket` でアップグレード。
